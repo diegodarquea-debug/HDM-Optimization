@@ -1,19 +1,19 @@
-partner_id,partner_name,orders_weight,awt_mean,awt_improvement,ept_increase,combined_time_mean,combined_improvement,hdm_activation_rate
-385448,Melt Pizzas - Antofagasta2,20922.0,4.75,1.6335,0.81,27.93,0.828,0.08
-114214,Melt Pizzas Pajaritos,9266.0,3.11,-0.2785,0.03,24.53,-0.3088,0.0
-156305,Melt Pizzas - Rancagua Centro,25612.0,4.73,1.0743,1.04,28.56,0.0378,0.1
-116112,Melt Pizzas - Plaza Brasil,22311.0,3.3,-0.6988,0.76,26.69,-1.4608,0.08
-172842,Melt Pizzas - El Llano,17026.0,3.03,-0.1242,0.26,28.59,-0.3751,0.03
-354027,Melt Pizzas - Talca Las Rastras,23214.0,4.01,-0.3334,0.8,28.51,-1.1239,0.08
-309089,Melt Pizzas - Temuco,45792.0,4.41,-0.297,1.3,30.77,-1.6006,0.13
-123621,Melt Pizzas - Valparaíso,21168.0,3.81,0.6242,0.62,28.72,0.001,0.06
-336977,Melt Pizzas - Fernández Albano,15456.0,3.72,0.2007,0.31,28.03,-0.1097,0.03
-301337,Melt Pizzas - Lomas De San Andrés,16031.0,3.39,-0.2952,0.33,26.86,-0.6182,0.03
-241986,Melt Pizzas - Quillota,15023.0,4.6,0.4916,0.39,30.0,0.0942,0.04
-383649,Melt Pizzas - Calama,33485.0,3.86,-0.7938,0.83,26.54,-1.6283,0.08
-313536,Melt Pizza - Midmall Maipú,22392.0,5.92,1.4662,0.59,31.63,0.8816,0.06
-128581,Melt Pizzas - Machali,17467.0,3.65,0.3121,0.34,27.14,-0.031,0.03
-160248,Melt Pizzas - Portugal,23117.0,4.53,1.8736,0.85,29.51,1.0274,0.08
-205727,Melt Pizzas - Villa Alemana,20601.0,4.74,1.7183,0.69,29.61,1.0297,0.07
-327965,Melt Pizzas - Talca,30149.0,3.86,-0.3581,0.86,29.77,-1.215,0.09
-135160,Melt Pizzas - Quilpue,13270.0,3.12,-0.1713,0.38,25.67,-0.5498,0.04
+partner_id,partner_name,awt_mean,awt_improvement,ept_increase,combined_improvement,hdm_activation_rate
+385448,Melt Pizzas - Antofagasta2,4.7,1.69,1.19,0.5,0.1191
+114214,Melt Pizzas Pajaritos,3.11,-0.28,0.09,-0.37,0.009
+156305,Melt Pizzas - Rancagua Centro,4.67,1.14,1.8,-0.66,0.1801
+116112,Melt Pizzas - Plaza Brasil,3.31,-0.7,0.8,-1.5,0.0798
+172842,Melt Pizzas - El Llano,3.02,-0.12,0.49,-0.6,0.0486
+354027,Melt Pizzas - Talca Las Rastras,3.99,-0.32,0.98,-1.3,0.0983
+309089,Melt Pizzas - Temuco,4.39,-0.27,1.84,-2.11,0.1838
+123621,Melt Pizzas - Valparaíso,3.81,0.63,1.07,-0.44,0.107
+336977,Melt Pizzas - Fernández Albano,3.72,0.2,0.46,-0.26,0.046
+301337,Melt Pizzas - Lomas De San Andrés,3.43,-0.33,0.53,-0.86,0.0525
+241986,Melt Pizzas - Quillota,4.63,0.47,0.38,0.08,0.0385
+383649,Melt Pizzas - Calama,3.88,-0.81,1.01,-1.82,0.1015
+313536,Melt Pizza - Midmall Maipú,5.92,1.47,0.94,0.53,0.0938
+128581,Melt Pizzas - Machali,3.64,0.32,0.57,-0.25,0.0568
+160248,Melt Pizzas - Portugal,4.48,1.93,1.29,0.64,0.1286
+205727,Melt Pizzas - Villa Alemana,4.69,1.77,1.01,0.76,0.1013
+327965,Melt Pizzas - Talca,3.85,-0.35,1.13,-1.49,0.1135
+135160,Melt Pizzas - Quilpue,3.11,-0.16,0.54,-0.7,0.0542
