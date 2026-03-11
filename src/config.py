@@ -132,7 +132,8 @@ STRATEGY_SETTINGS = {
 # MODEL TRAINING
 # -----------------------------------------------------------------------------
 TRAIN_TEST_SPLIT = 0.6
-MODEL_TYPE = "linear_regression"
+# Opciones: "linear_regression", "decision_tree", "random_forest", "xgboost"
+MODEL_TYPE = "xgboost"
 
 # -----------------------------------------------------------------------------
 # BIGQUERY (optional / future integration)

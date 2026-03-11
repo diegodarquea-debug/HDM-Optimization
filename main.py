@@ -86,7 +86,10 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray):
     logger.info("Starting Franchise Monte Carlo exploration...")
     simulator = HDMSimulator(awt_predictor, ept_predictor, baseline_metrics)
     mc_df = simulator.run_simulations(df, THRESHOLDS, n_sims=N_SIMULATIONS)
-    mc_df["objective_score"] = (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"]) - (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
+
+    # Calculate objective score using weights from config
+    mc_df["objective_score"] = (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"]) - \
+                              (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
 
     mc_output = OUTPUT_DIR / "monte_carlo_franchise_exploration.csv"
     mc_df.to_csv(mc_output, index=False)
@@ -144,7 +147,6 @@ def _save_partner_outputs(result, output_dir):
     """Save single-partner outputs (legacy format)."""
     optimizer = result["optimizer"]
     best_config = result["best_config"]
-    baseline_metrics = result["baseline_metrics"]
     
     pd.DataFrame(optimizer.optimization_history).to_csv(output_dir / "optimization_history.csv", index=False)
     

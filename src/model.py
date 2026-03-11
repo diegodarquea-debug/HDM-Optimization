@@ -1,5 +1,6 @@
 """
 Train predictive models for AWT and EPT.
+Supports Linear Regression, Decision Trees, Random Forests, and XGBoost.
 """
 import logging
 from typing import Tuple, Dict, Any, Optional
@@ -49,6 +50,17 @@ class AWTPredictor:
             self.model = DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
         elif self.model_type == "random_forest":
             self.model = RandomForestRegressor(n_estimators=100, max_depth=5, random_state=RANDOM_SEED, n_jobs=-1)
+        elif self.model_type == "xgboost":
+            import xgboost as xgb
+            self.model = xgb.XGBRegressor(
+                n_estimators=200,
+                max_depth=5,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=RANDOM_SEED,
+                n_jobs=-1
+            )
         else:
             raise ValueError(f"Unknown model type: {self.model_type}")
         
@@ -96,10 +108,22 @@ class EPTPredictor:
         y = df[ept_col].values
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=1-TRAIN_TEST_SPLIT, random_state=RANDOM_SEED)
         
-        self.model = LinearRegression() if self.model_type == "linear_regression" else \
-                     DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
+        if self.model_type == "linear_regression":
+            self.model = LinearRegression()
+        elif self.model_type == "xgboost":
+            import xgboost as xgb
+            self.model = xgb.XGBRegressor(
+                n_estimators=150,
+                max_depth=4,
+                learning_rate=0.07,
+                random_state=RANDOM_SEED,
+                n_jobs=-1
+            )
+        else:
+            self.model = DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
+
         self.model.fit(X_train, y_train)
-        logger.info(f"EPT Predictor trained on {ept_col}.")
+        logger.info(f"EPT Predictor ({self.model_type}) trained on {ept_col}.")
 
     def predict(self, ordenes: float, riders: float, hdm: float) -> float:
         if self.model: return float(self.model.predict(np.array([[ordenes, riders, hdm]]))[0])
@@ -108,7 +132,7 @@ class EPTPredictor:
 
 def train_models(df: pd.DataFrame) -> Tuple[AWTPredictor, EPTPredictor]:
     """Train both predictors."""
-    logger.info("Training predictive models...")
-    awt_pred = AWTPredictor(); awt_pred.train(df)
-    ept_pred = EPTPredictor(); ept_pred.train(df)
+    logger.info(f"Training predictive models using {MODEL_TYPE}...")
+    awt_pred = AWTPredictor(model_type=MODEL_TYPE); awt_pred.train(df)
+    ept_pred = EPTPredictor(model_type=MODEL_TYPE); ept_pred.train(df)
     return awt_pred, ept_pred
