@@ -86,8 +86,7 @@ class HDMOptimizer:
         self.optimization_history.append({
             "u1": u1, "u2": u2, "u3": u3, "delta_ept": delta_ept, "duracion_hdm": duracion_hdm,
             "awt_mean": result["awt_mean"], "awt_improvement": awt_imp,
-            "ept_increase": ept_inc, "combined_improvement": comb_imp,
-            "objective_score": weighted_gain,
+            "ept_increase": ept_inc, "combined_improvement": weighted_gain,
             "hdm_activation_rate": result.get("hdm_activation_rate", 0),
             "total_loss": total_loss,
         })

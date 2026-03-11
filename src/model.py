@@ -96,14 +96,8 @@ class EPTPredictor:
         y = df[ept_col].values
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=1-TRAIN_TEST_SPLIT, random_state=RANDOM_SEED)
         
-        if self.model_type == "linear_regression":
-            self.model = LinearRegression()
-        elif self.model_type == "random_forest":
-            self.model = RandomForestRegressor(random_state=RANDOM_SEED)
-        elif self.model_type == "decision_tree":
-            self.model = DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
-        else:
-            raise ValueError(f"Unsupported EPT model_type: {self.model_type}")
+        self.model = LinearRegression() if self.model_type == "linear_regression" else \
+                     DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
         self.model.fit(X_train, y_train)
         logger.info(f"EPT Predictor trained on {ept_col}.")
 
