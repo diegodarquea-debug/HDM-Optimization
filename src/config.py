@@ -12,17 +12,37 @@ from pathlib import Path
 # LOGGING CONFIGURATION
 # -----------------------------------------------------------------------------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("pipeline.log")
-    ]
-)
+
+
+def configure_logging(log_level=None, log_file="pipeline.log") -> None:
+    """
+    Configure application-wide logging.
+
+    This function should be called explicitly by the application entrypoint
+    to avoid configuring logging as a side effect of importing this module.
+
+    Parameters
+    ----------
+    log_level : str | None
+        Optional log level override (e.g., "DEBUG", "INFO"). If None, the
+        LOG_LEVEL constant is used.
+    log_file : str
+        Path to the log file to write to (default: "pipeline.log").
+    """
+    level = (log_level or LOG_LEVEL).upper()
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file),
+        ],
+    )
+
 
 # -----------------------------------------------------------------------------
 # PATHS
+# -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # Project root folder (one level above /src)
 PROJECT_ROOT = Path(__file__).parent.parent

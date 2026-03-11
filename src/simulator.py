@@ -191,16 +191,37 @@ class HDMSimulator:
         Run multiple Monte Carlo simulations in parallel.
         """
         if DEBUG: print(f"\n[SIMULATOR] Running {n_sims} parallel simulations...")
-        
+
+        # Use a dedicated RNG to sample all parameters in the main process,
+        # avoiding use of the global np.random inside Parallel workers.
+        rng = np.random.default_rng(RANDOM_SEED)
+
+        sim_params = []
+        for _ in range(n_sims):
+            u1 = rng.uniform(param_space["u1"][0], param_space["u1"][1])
+            u2 = rng.uniform(param_space["u2"][0], param_space["u2"][1])
+            u3 = rng.uniform(param_space["u3"][0], param_space["u3"][1])
+
+            delta_spec = param_space["delta_ept"]
+            if isinstance(delta_spec, (list, tuple)):
+                delta_ept = float(rng.choice(delta_spec))
+            else:
+                delta_ept = rng.uniform(delta_spec[0], delta_spec[1])
+
+            duracion_hdm = rng.uniform(param_space["duracion_hdm"][0], param_space["duracion_hdm"][1])
+
+            sim_params.append((u1, u2, u3, delta_ept, duracion_hdm))
+
         results = Parallel(n_jobs=-1)(
             delayed(self.simulate_scenario)(
                 df,
-                np.random.uniform(param_space["u1"][0], param_space["u1"][1]),
-                np.random.uniform(param_space["u2"][0], param_space["u2"][1]),
-                np.random.uniform(param_space["u3"][0], param_space["u3"][1]),
-                float(np.random.choice(param_space["delta_ept"])) if isinstance(param_space["delta_ept"], (list, tuple)) else np.random.uniform(param_space["delta_ept"][0], param_space["delta_ept"][1]),
-                np.random.uniform(param_space["duracion_hdm"][0], param_space["duracion_hdm"][1])
-            ) for _ in tqdm(range(n_sims), desc="Simulating")
+                u1,
+                u2,
+                u3,
+                delta_ept,
+                duracion_hdm,
+            )
+            for (u1, u2, u3, delta_ept, duracion_hdm) in tqdm(sim_params, desc="Simulating")
         )
         return pd.DataFrame(results)
     
@@ -212,7 +233,10 @@ class HDMSimulator:
         from pathlib import Path
         
         df_analysis = df.copy()
-        df_analysis['rolling_max'] = df_analysis['max_awt_espera_min'].rolling(window=STRESS_WINDOW_ROLLING_SIZE).max()
+        df_analysis['rolling_max'] = df_analysis['max_awt_espera_min'].rolling(
+            window=STRESS_WINDOW_ROLLING_SIZE,
+            min_periods=1,
+        ).max()
         idx = df_analysis['rolling_max'].idxmax()
         
         start = max(0, idx - STRESS_WINDOW_HALF_SIZE)
