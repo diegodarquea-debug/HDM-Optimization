@@ -63,13 +63,15 @@ class HDMSimulator:
     def _run_simulation_loop(self, df: pd.DataFrame, u1: int, u2: int, u3: int,
                              delta_ept: float, duracion_hdm: int) -> pd.DataFrame:
         """
-        Core simulation engine. Centralizes the logic of activation, delay, and impact.
+        Core simulation engine optimized for speed.
         """
         u1, u2, u3 = int(round(u1)), int(round(u2)), int(round(u3))
         duracion_hdm = int(round(duracion_hdm))
         
         df_sim = df.copy().reset_index(drop=True)
-        momento_values = df_sim["momento_exacto"].values
+        # Use unix timestamps (ns) for faster comparison.
+        # Ensure we are in nanoseconds by explicit casting to datetime64[ns]
+        momento_values_ns = df_sim["momento_exacto"].values.astype('datetime64[ns]').view(np.int64)
         ordenes_values = df_sim["ordenes_pendientes"].values
         riders_values = df_sim["riders_cerca"].values
         awt_values = df_sim["max_awt_espera_min"].values
@@ -83,9 +85,9 @@ class HDMSimulator:
                 break
 
         # Output arrays
-        hdm_activated_sim = np.zeros(len(df_sim), dtype=int)
-        hdm_active_sim = np.zeros(len(df_sim), dtype=int)
-        hdm_in_delay_sim = np.zeros(len(df_sim), dtype=int)
+        hdm_activated_sim = np.zeros(len(df_sim), dtype=np.int8)
+        hdm_active_sim = np.zeros(len(df_sim), dtype=np.int8)
+        hdm_in_delay_sim = np.zeros(len(df_sim), dtype=np.int8)
         awt_predicted = np.zeros(len(df_sim), dtype=float)
         ept_with_hdm = np.zeros(len(df_sim), dtype=float)
         
@@ -95,50 +97,83 @@ class HDMSimulator:
         u3_met = (awt_values >= u3)
         and_triggered = u1_met & u2_met & u3_met
 
-        activation_queue_start = None
-        hdm_end_time = None
+        # Optimization: Pre-extract model weights if it's linear regression
+        is_linear = hasattr(self.awt_predictor, 'model') and \
+                    hasattr(self.awt_predictor.model, 'coef_') and \
+                    hasattr(self.awt_predictor.model, 'intercept_')
+        if is_linear:
+            coefs = self.awt_predictor.model.coef_
+            intercept = self.awt_predictor.model.intercept_
+            has_ept_feat = self.awt_predictor.ept_feature_name is not None
+
+        # Factor for HDM effect
+        reduction_per_min = HDM_EFFECT_SETTINGS["awt_delta_ept_reduction_per_min"]
+        max_total_reduction = HDM_EFFECT_SETTINGS["awt_delta_ept_max_reduction"]
+        hdm_factor = max(1.0 - max_total_reduction, 1.0 - (reduction_per_min * delta_ept))
+
+        activation_queue_start_ns = None
+        hdm_end_time_ns = None
+        delay_ns = int(ACTIVATION_DELAY_MINUTES * 60 * 1000 * 1000 * 1000)
+        hdm_dur_ns = int(duracion_hdm * 60 * 1000 * 1000 * 1000)
         
         for i in range(len(df_sim)):
-            current_time = pd.Timestamp(momento_values[i])
-            is_triggered = bool(and_triggered[i])
+            curr_ns = momento_values_ns[i]
+            is_triggered = and_triggered[i]
             
             hdm_currently_active = 0
             in_delay_period = 0
             
-            if activation_queue_start is not None:
-                time_since_trigger = (current_time - activation_queue_start).total_seconds() / 60
-
-                if time_since_trigger < ACTIVATION_DELAY_MINUTES:
+            if activation_queue_start_ns is not None:
+                # We use a small epsilon (1s in ns) to avoid float/rounding issues if any
+                if curr_ns < activation_queue_start_ns + delay_ns:
                     in_delay_period = 1
-                elif hdm_end_time is not None and current_time < hdm_end_time:
+                    hdm_currently_active = 0
+                elif hdm_end_time_ns is not None and curr_ns < hdm_end_time_ns:
+                    in_delay_period = 0
                     hdm_currently_active = 1
                 else:
-                    activation_queue_start = None
-                    hdm_end_time = None
+                    activation_queue_start_ns = None
+                    hdm_end_time_ns = None
+                    in_delay_period = 0
+                    hdm_currently_active = 0
             
             if is_triggered:
-                if activation_queue_start is None:
+                if activation_queue_start_ns is None:
                     hdm_activated_sim[i] = 1
-                    activation_queue_start = current_time
-                    hdm_end_time = current_time + pd.Timedelta(minutes=ACTIVATION_DELAY_MINUTES + duracion_hdm)
-                    in_delay_period = 1
+                    activation_queue_start_ns = curr_ns
+                    hdm_end_time_ns = curr_ns + delay_ns + hdm_dur_ns
+                    # Re-evaluate based on the new queue start
+                    if curr_ns < activation_queue_start_ns + delay_ns:
+                        in_delay_period = 1
+                        hdm_currently_active = 0
+                    else:
+                        in_delay_period = 0
+                        hdm_currently_active = 1
                 elif hdm_currently_active == 1:
-                    hdm_end_time = current_time + pd.Timedelta(minutes=duracion_hdm)
+                    # Extend HDM duration if triggered while already active
+                    hdm_end_time_ns = curr_ns + hdm_dur_ns
 
             hdm_active_sim[i] = hdm_currently_active
             hdm_in_delay_sim[i] = in_delay_period
             
-            ept_base = max(0.0, float(ept_original_values[i])) if ordenes_values[i] > 0 else 0.0
+            ord_i = ordenes_values[i]
+            ept_base = max(0.0, float(ept_original_values[i])) if ord_i > 0 else 0.0
             ept_sim = ept_base + delta_ept if hdm_currently_active else ept_base
             
-            awt_pred = self.awt_predictor.predict(float(ordenes_values[i]), float(riders_values[i]),
-                                                 float(hdm_currently_active), ept_sim)
+            if is_linear:
+                # Fast manual calculation for linear models
+                # features order: [ordenes, riders, hdm, ept (optional)]
+                rid_i = riders_values[i]
+                hdm_val = float(hdm_currently_active)
+                awt_pred = intercept + ord_i * coefs[0] + rid_i * coefs[1] + hdm_val * coefs[2]
+                if has_ept_feat:
+                    awt_pred += ept_sim * coefs[3]
+            else:
+                awt_pred = self.awt_predictor.predict(float(ord_i), float(riders_values[i]),
+                                                     float(hdm_currently_active), ept_sim)
             
             if hdm_currently_active and delta_ept > 0:
-                reduction_per_min = HDM_EFFECT_SETTINGS["awt_delta_ept_reduction_per_min"]
-                max_total_reduction = HDM_EFFECT_SETTINGS["awt_delta_ept_max_reduction"]
-                factor = max(1.0 - max_total_reduction, 1.0 - (reduction_per_min * delta_ept))
-                awt_pred *= factor
+                awt_pred *= hdm_factor
             
             awt_predicted[i] = max(0.0, awt_pred)
             ept_with_hdm[i] = ept_sim
@@ -153,6 +188,11 @@ class HDMSimulator:
         df_sim["u3_condition"] = u3_met.astype(int)
         df_sim["all_conditions_met"] = and_triggered.astype(int)
         df_sim["ept_base"] = ept_original_values
+
+        # print(f"DEBUG: and_triggered: {and_triggered}")
+        # print(f"DEBUG: hdm_activated_sim: {hdm_activated_sim}")
+        # print(f"DEBUG: hdm_in_delay_sim: {hdm_in_delay_sim}")
+        # print(f"DEBUG: hdm_active_sim: {hdm_active_sim}")
 
         return df_sim
 
