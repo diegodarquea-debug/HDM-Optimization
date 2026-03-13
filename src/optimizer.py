@@ -80,7 +80,14 @@ class HDMOptimizer:
         if comb_imp < 0: penalty += self.penalty_combined_worse * (abs(comb_imp) ** 2)
         if ept_inc > MAX_EPT_INCREASE: penalty += self.penalty_ept_excess * ((ept_inc - MAX_EPT_INCREASE) ** 2)
         
-        weighted_gain = (self.weight_awt * awt_imp) - (self.weight_ept * ept_inc)
+        # Refined objective: Reward AWT reduction, but also reward a "smooth" activation rate.
+        # If HDM is active more than 25% of the time, it might lose operational meaning.
+        hdm_rate = result.get("hdm_activation_rate", 0)
+        rate_penalty = 0.0
+        if hdm_rate > 0.25:
+            rate_penalty = 20.0 * ((hdm_rate - 0.25) ** 2)
+
+        weighted_gain = (self.weight_awt * awt_imp) - (self.weight_ept * ept_inc) - rate_penalty
         total_loss = -weighted_gain + penalty
         
         self.optimization_history.append({
