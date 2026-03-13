@@ -88,9 +88,16 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray):
     clusters = df_stats["cluster"].unique()
     all_cluster_results = []
 
-    for cluster_name in clusters:
-        cluster_partners = df_stats[df_stats["cluster"] == cluster_name]["partner_id"].values
-        df_cluster = df[df["partner_id"].isin(cluster_partners)].copy()
+    # Optional: Add a virtual "Global" cluster to include all partners
+    cluster_list = list(clusters) + ["Global"]
+
+    for cluster_name in cluster_list:
+        if cluster_name == "Global":
+            cluster_partners = all_partners
+            df_cluster = df.copy()
+        else:
+            cluster_partners = df_stats[df_stats["cluster"] == cluster_name]["partner_id"].values
+            df_cluster = df[df["partner_id"].isin(cluster_partners)].copy()
 
         logger.info(f"Optimizing Cluster: {cluster_name} ({len(cluster_partners)} partners)")
 

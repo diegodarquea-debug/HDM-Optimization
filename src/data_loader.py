@@ -7,9 +7,43 @@ import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List, Union, Any
 import pandas as pd
-from .config import RAW_DATA_PATH
+from .config import RAW_DATA_PATH, GCP_PROJECT_ID, BQ_DATASET, BQ_TABLE
 
 logger = logging.getLogger(__name__)
+
+def load_bigquery_data(query: Optional[str] = None) -> pd.DataFrame:
+    """
+    Load data from Google BigQuery.
+    Requires GOOGLE_APPLICATION_CREDENTIALS to be set.
+    """
+    try:
+        from google.cloud import bigquery
+    except ImportError:
+        logger.error("google-cloud-bigquery not installed.")
+        raise ImportError("Please install google-cloud-bigquery to use BigQuery loading.")
+
+    if not GCP_PROJECT_ID or not BQ_DATASET or not BQ_TABLE:
+        logger.warning("BigQuery config missing in config.py. Falling back to default query.")
+        # We can't really run a query without a project, but we'll try if a query is provided
+        if not query:
+            raise ValueError("BigQuery configuration missing and no query provided.")
+
+    client = bigquery.Client(project=GCP_PROJECT_ID)
+
+    if not query:
+        query = f"""
+            SELECT *
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.{BQ_TABLE}`
+            WHERE momento_exacto >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+        """
+
+    logger.info(f"Executing BigQuery query: {query[:100]}...")
+    df = client.query(query).to_dataframe()
+    df["momento_exacto"] = pd.to_datetime(df["momento_exacto"])
+
+    logger.info(f"Loaded {len(df)} rows from BigQuery")
+    return df
+
 
 def load_csv_data(filepath: Optional[Union[str, Path]] = None) -> pd.DataFrame:
     """Load data from CSV file."""
@@ -92,9 +126,14 @@ def load_and_prepare_data(filepath: Optional[str] = None,
                           partner_id: Optional[Any] = None,
                           start_date: Optional[pd.Timestamp] = None,
                           end_date: Optional[pd.Timestamp] = None,
-                          mode: str = "partner") -> pd.DataFrame:
+                          mode: str = "partner",
+                          source: str = "csv") -> pd.DataFrame:
     """Complete pipeline: load → preprocess → filter."""
-    df = load_csv_data(filepath)
+    if source == "bigquery":
+        df = load_bigquery_data()
+    else:
+        df = load_csv_data(filepath)
+
     df = preprocess_data(df)
     
     if mode == "franchise":
