@@ -201,6 +201,33 @@ Optimiza una configuración **única** para todos los partners, ponderada por vo
 python main.py --mode franchise
 ```
 
+### Modo BigQuery con Query Real
+Permite correr el pipeline con la query operacional parametrizada sin editar el SQL en cada ejecución.
+
+Con parámetros explícitos:
+
+```bash
+python main.py --mode franchise --data-source bigquery --bq-query-file sql/franchise_input.sql --franchise KFC --grade AAA --start-date 2026-02-23 --end-date 2026-03-01
+```
+
+Con prompts interactivos en terminal:
+
+```bash
+python main.py --mode franchise --data-source bigquery --bq-query-file sql/franchise_input.sql
+```
+
+El flujo pedirá:
+- `Franchise`
+- `Grade` (`AAA`, `AA`, `A`)
+- `Start date`
+- `End date`
+
+Opcionalmente se puede sobreescribir país:
+
+```bash
+python main.py --mode franchise --data-source bigquery --bq-query-file sql/franchise_input.sql --country-id 2
+```
+
 **Salidas**:
 - `monte_carlo_franchise_exploration.csv` - Exploración de 2000 configs
 - `optimization_history.csv` - Convergencia de Bayesian Optimization

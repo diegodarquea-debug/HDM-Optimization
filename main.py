@@ -44,6 +44,45 @@ def _get_versioned_output_dir(output_base_dir: Path = OUTPUT_DIR) -> Path:
     logger.info(f"Versioned output directory: {versioned_dir}")
     return versioned_dir
 
+
+def _prompt_if_missing(current_value: Any, prompt_text: str, default: Any = None) -> Any:
+    if current_value is not None and str(current_value).strip() != "":
+        return current_value
+
+    if not sys.stdin.isatty():
+        if default is not None:
+            return default
+        raise ValueError(f"Missing required input for: {prompt_text}")
+
+    suffix = f" [{default}]" if default is not None else ""
+    raw_value = input(f"{prompt_text}{suffix}: ").strip()
+    if raw_value:
+        return raw_value
+    return default
+
+
+def _collect_bigquery_query_inputs(args, bq_query: str):
+    requires_real_query_inputs = bool(bq_query) and any(
+        placeholder in bq_query
+        for placeholder in ["@target_franchise", "@target_grade", "@target_country_id", "@start_date", "@end_date"]
+    )
+
+    if not requires_real_query_inputs:
+        return args, {}
+
+    args.start_date = _prompt_if_missing(args.start_date, "Start date (YYYY-MM-DD)")
+    args.end_date = _prompt_if_missing(args.end_date, "End date (YYYY-MM-DD)")
+    args.franchise = _prompt_if_missing(args.franchise, "Franchise", default="KFC")
+    args.grade = _prompt_if_missing(args.grade, "Grade", default="AAA")
+    args.country_id = int(_prompt_if_missing(args.country_id, "Country ID", default=2))
+
+    query_parameters = {
+        "target_franchise": str(args.franchise),
+        "target_grade": str(args.grade),
+        "target_country_id": int(args.country_id),
+    }
+    return args, query_parameters
+
 def process_partner(df_partner: pd.DataFrame, partner_id: Any, partner_name: str = None) -> Dict[str, Any]:
     """Process a single partner: analyze, train, simulate, optimize."""
     start_date, end_date = get_date_range(df_partner)
@@ -181,7 +220,13 @@ def main():
     parser.add_argument("--start-date", type=str, default=None, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=str, default=None, help="End date (YYYY-MM-DD)")
     parser.add_argument("--bq-query-file", type=str, default=None,
-                        help="Path to SQL file with @start_date, @end_date and @partner_ids parameters")
+                        help="Path to SQL file with BigQuery parameters such as start_date, end_date, franchise, grade and partner_ids")
+    parser.add_argument("--franchise", type=str, default=None,
+                        help="Franchise name used by the BigQuery query (e.g. KFC)")
+    parser.add_argument("--grade", type=str, default=None,
+                        help="Vendor grade used by the BigQuery query (AAA, AA, A)")
+    parser.add_argument("--country-id", type=int, default=None,
+                        help="Country ID used by the BigQuery query (default: 2 for Chile)")
     args = parser.parse_args()
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
@@ -197,15 +242,18 @@ def main():
             raise FileNotFoundError(f"BigQuery query file not found: {bq_query_path}")
         bq_query = bq_query_path.read_text(encoding="utf-8")
 
+    args, query_parameters = _collect_bigquery_query_inputs(args, bq_query)
+
     df = load_and_prepare_data(
         filepath=args.data_file,
         partner_id=args.partner_id,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=pd.to_datetime(args.start_date) if args.start_date else None,
+        end_date=pd.to_datetime(args.end_date) if args.end_date else None,
         mode=args.mode,
         source=args.data_source,
         bigquery_query=bq_query,
         partner_ids=partner_ids_filter,
+        query_parameters=query_parameters,
     )
 
     if args.mode == "franchise" and partner_ids_filter:

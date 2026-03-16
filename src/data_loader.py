@@ -5,7 +5,8 @@ Auto-detects partner_id and date ranges.
 import logging
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple, List, Union, Any
+from datetime import date, datetime
+from typing import Optional, Tuple, List, Union, Any, Dict
 import pandas as pd
 from .config import (
     RAW_DATA_PATH,
@@ -31,10 +32,44 @@ def _resolve_data_source(data_source: Optional[str]) -> str:
 
     return source
 
+
+def _infer_bigquery_parameter(name: str, value: Any, bigquery_module: Any):
+    if value is None:
+        return None
+
+    if isinstance(value, pd.Timestamp):
+        return bigquery_module.ScalarQueryParameter(name, "DATE", value.date())
+
+    if isinstance(value, datetime):
+        return bigquery_module.ScalarQueryParameter(name, "DATE", value.date())
+
+    if isinstance(value, date):
+        return bigquery_module.ScalarQueryParameter(name, "DATE", value)
+
+    if isinstance(value, bool):
+        return bigquery_module.ScalarQueryParameter(name, "BOOL", value)
+
+    if isinstance(value, int):
+        return bigquery_module.ScalarQueryParameter(name, "INT64", value)
+
+    if isinstance(value, float):
+        return bigquery_module.ScalarQueryParameter(name, "FLOAT64", value)
+
+    if isinstance(value, (list, tuple)):
+        values = [item for item in value if item is not None]
+        if not values:
+            return bigquery_module.ArrayQueryParameter(name, "STRING", [])
+        if all(isinstance(item, int) for item in values):
+            return bigquery_module.ArrayQueryParameter(name, "INT64", values)
+        return bigquery_module.ArrayQueryParameter(name, "STRING", [str(item) for item in values])
+
+    return bigquery_module.ScalarQueryParameter(name, "STRING", str(value))
+
 def load_bigquery_data(query: Optional[str] = None,
                        start_date: Optional[pd.Timestamp] = None,
                        end_date: Optional[pd.Timestamp] = None,
-                       partner_ids: Optional[List[Any]] = None) -> pd.DataFrame:
+                       partner_ids: Optional[List[Any]] = None,
+                       query_parameters: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
     """
     Load data from Google BigQuery using Default Application Credentials.
     
@@ -57,7 +92,6 @@ def load_bigquery_data(query: Optional[str] = None,
             raise ValueError("BigQuery configuration missing and no query provided.")
         logger.warning("Using custom query without project/dataset/table config.")
 
-    # Prepare query parameters
     query_params = []
     
     if query is None:
@@ -69,15 +103,25 @@ def load_bigquery_data(query: Optional[str] = None,
         """
     else:
         # Custom query: prepare parameters if referenced
-        if "@start_date" in query and start_date:
+        if "@start_date" in query and start_date is not None:
             sd = pd.Timestamp(start_date).date()
             query_params.append(bigquery.ScalarQueryParameter("start_date", "DATE", sd))
-        if "@end_date" in query and end_date:
+        if "@end_date" in query and end_date is not None:
             ed = pd.Timestamp(end_date).date()
             query_params.append(bigquery.ScalarQueryParameter("end_date", "DATE", ed))
-        if "@partner_ids" in query and partner_ids:
+        if "@partner_ids" in query and partner_ids is not None:
             pids = [int(pid) for pid in partner_ids if pid]
             query_params.append(bigquery.ArrayQueryParameter("partner_ids", "INT64", pids))
+
+    for param_name, param_value in (query_parameters or {}).items():
+        placeholder = f"@{param_name}"
+        if placeholder not in query:
+            continue
+        if param_name in {"start_date", "end_date", "partner_ids"}:
+            continue
+        inferred = _infer_bigquery_parameter(param_name, param_value, bigquery)
+        if inferred is not None:
+            query_params.append(inferred)
 
     # Use Default Application Credentials (environment auto-detection)
     client = bigquery.Client(project=GCP_PROJECT_ID)
@@ -180,7 +224,8 @@ def load_and_prepare_data(filepath: Optional[str] = None,
                           mode: str = "partner",
                           source: Optional[str] = None,
                           bigquery_query: Optional[str] = None,
-                          partner_ids: Optional[List[Any]] = None) -> pd.DataFrame:
+                          partner_ids: Optional[List[Any]] = None,
+                          query_parameters: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
     """Complete pipeline: load → preprocess → filter."""
     resolved_source = _resolve_data_source(source)
 
@@ -194,6 +239,7 @@ def load_and_prepare_data(filepath: Optional[str] = None,
             start_date=start_date,
             end_date=end_date,
             partner_ids=resolved_partner_ids,
+            query_parameters=query_parameters,
         )
     else:
         df = load_csv_data(filepath)
