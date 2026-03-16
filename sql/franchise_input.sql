@@ -111,7 +111,7 @@ SELECT
   COUNT(DISTINCT rp.rider_id) AS riders_cerca,
   ROUND(COALESCE(AVG(op.order_ept_min), 0), 2) AS ept_promedio_min,
   MAX(CASE WHEN op.is_hd_order THEN 1 ELSE 0 END) AS hdm_activo,
-  ARRAY_AGG(op.hdm_author IGNORE NULLS ORDER BY op.arrived_at ASC LIMIT 1)[SAFE_OFFSET(0)] AS hdm_autor,
+  MAX(op.hdm_author) AS hdm_autor,
   COALESCE(MAX(SAFE_DIVIDE(DATETIME_DIFF(tg.dt_snapshot, DATETIME(rp.start_at, 'America/Santiago'), SECOND), 60.0)), 0) AS max_awt_espera_min
 FROM time_grid tg
 CROSS JOIN vendor_scope vs
