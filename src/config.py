@@ -154,6 +154,10 @@ OPTIMIZER_PENALTIES = {
     "awt_worse_quad": 50,
     "combined_worse_quad": 30,
     "ept_excess_quad": 10,
+    # Rate overactivation penalty: HDM active > hdm_rate_threshold of the time
+    # loses operational meaning. Penalizes quadratically beyond the threshold.
+    "hdm_rate_threshold": 0.25,
+    "hdm_rate_excess_coeff": 20.0,
 }
 
 # Strategy extraction rules
@@ -168,6 +172,21 @@ TRAIN_TEST_SPLIT = 0.6
 # Options: "linear_regression", "random_forest", "decision_tree"
 MODEL_TYPE = "random_forest"
 
+# Hyperparameters shared by AWTPredictor and EPTPredictor.
+# max_depth caps tree depth to prevent overfitting on short training windows.
+MODEL_SETTINGS = {
+    "rf_n_estimators": 100,
+    "rf_max_depth": 5,
+    "dt_max_depth": 5,
+}
+
+# -----------------------------------------------------------------------------
+# OPERATOR DEFAULTS (Chile deployment)
+# Override via env vars so nothing is hardcoded in argparse defaults.
+# -----------------------------------------------------------------------------
+DEFAULT_COUNTRY_ID = int(os.getenv("DEFAULT_COUNTRY_ID", "2"))
+DEFAULT_ENTITY_ID = os.getenv("DEFAULT_ENTITY_ID", "PY_CL")
+
 # -----------------------------------------------------------------------------
 # BIGQUERY (JupyterHub: uses Default Application Credentials)
 # -----------------------------------------------------------------------------
@@ -176,6 +195,9 @@ BQ_DATASET = os.getenv("BQ_DATASET", None)
 BQ_TABLE = os.getenv("BQ_TABLE", None)
 BQ_LOCATION = os.getenv("BQ_LOCATION", "US")
 BQ_TIMEOUT_SECONDS = int(os.getenv("BQ_TIMEOUT_SECONDS", "300"))
+# Lookback window (days) used ONLY by the fallback default table query
+# (when no --bq-query-file is provided). The franchise SQL file overrides this.
+BQ_DEFAULT_LOOKBACK_DAYS = int(os.getenv("BQ_DEFAULT_LOOKBACK_DAYS", "30"))
 
 # Data source mode: auto | csv | bigquery
 DATA_SOURCE = os.getenv("HDM_DATA_SOURCE", "auto").lower()

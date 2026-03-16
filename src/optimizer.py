@@ -19,6 +19,7 @@ from .config import (
     OPTIMIZER_PENALTIES,
     STRATEGY_SETTINGS,
     BAYESIAN_SETTINGS,
+    RANDOM_SEED,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ class HDMOptimizer:
         self.penalty_awt_worse = OPTIMIZER_PENALTIES["awt_worse_quad"]
         self.penalty_combined_worse = OPTIMIZER_PENALTIES["combined_worse_quad"]
         self.penalty_ept_excess = OPTIMIZER_PENALTIES["ept_excess_quad"]
+        self.penalty_rate_threshold = OPTIMIZER_PENALTIES["hdm_rate_threshold"]
+        self.penalty_rate_coeff = OPTIMIZER_PENALTIES["hdm_rate_excess_coeff"]
         
         self.baseline_awt = baseline_metrics["awt_promedio"]
         self.baseline_ept = baseline_metrics.get("ept_promedio", 0)
@@ -81,11 +84,11 @@ class HDMOptimizer:
         if ept_inc > MAX_EPT_INCREASE: penalty += self.penalty_ept_excess * ((ept_inc - MAX_EPT_INCREASE) ** 2)
         
         # Refined objective: Reward AWT reduction, but also reward a "smooth" activation rate.
-        # If HDM is active more than 25% of the time, it might lose operational meaning.
+        # If HDM is active more than hdm_rate_threshold of the time, it loses operational meaning.
         hdm_rate = result.get("hdm_activation_rate", 0)
         rate_penalty = 0.0
-        if hdm_rate > 0.25:
-            rate_penalty = 20.0 * ((hdm_rate - 0.25) ** 2)
+        if hdm_rate > self.penalty_rate_threshold:
+            rate_penalty = self.penalty_rate_coeff * ((hdm_rate - self.penalty_rate_threshold) ** 2)
 
         weighted_gain = (self.weight_awt * awt_imp) - (self.weight_ept * ept_inc) - rate_penalty
         total_loss = -weighted_gain + penalty
@@ -106,7 +109,7 @@ class HDMOptimizer:
         return float(total_loss)
     
     def optimize(self, n_calls: Optional[int] = None, method: str = "gp_minimize",
-                 random_state: int = 42, x0: Optional[List[List[Any]]] = None,
+                 random_state: int = RANDOM_SEED, x0: Optional[List[List[Any]]] = None,
                  progress_callback=None) -> Any:
         """Run Bayesian optimization."""
         n_calls = int(n_calls or N_OPTIMIZATION_CALLS)

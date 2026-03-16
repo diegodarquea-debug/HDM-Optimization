@@ -22,6 +22,8 @@ from src.config import (
     MAX_EPT_INCREASE,
     BAYESIAN_SETTINGS,
     DATA_SOURCE,
+    DEFAULT_COUNTRY_ID,
+    DEFAULT_ENTITY_ID,
     configure_logging,
 )
 from src.data_loader import load_and_prepare_data, get_unique_partners, get_date_range
@@ -299,10 +301,10 @@ def main():
                         help="Data source (default: bigquery)")
     parser.add_argument("--bq-query-file", type=str, default="sql/franchise_input.sql",
                         help="BigQuery SQL file (default: sql/franchise_input.sql)")
-    parser.add_argument("--country-id", type=int, default=2,
-                        help="Country ID (default: 2 for Chile)")
-    parser.add_argument("--entity-id", type=str, default="PY_CL",
-                        help="Entity ID (default: PY_CL for Chile)")
+    parser.add_argument("--country-id", type=int, default=DEFAULT_COUNTRY_ID,
+                        help=f"Country ID (default: {DEFAULT_COUNTRY_ID} — from config.DEFAULT_COUNTRY_ID)")
+    parser.add_argument("--entity-id", type=str, default=DEFAULT_ENTITY_ID,
+                        help=f"Entity ID (default: {DEFAULT_ENTITY_ID} — from config.DEFAULT_ENTITY_ID)")
     parser.add_argument("--optimization-scope", choices=["global", "clustered"], default="global",
                         help="Optimization scope for franchise mode (default: global)")
     

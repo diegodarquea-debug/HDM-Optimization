@@ -10,7 +10,7 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from .config import TRAIN_TEST_SPLIT, MODEL_TYPE, RANDOM_SEED
+from .config import TRAIN_TEST_SPLIT, MODEL_TYPE, RANDOM_SEED, MODEL_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +46,9 @@ class AWTPredictor:
         if self.model_type == "linear_regression":
             self.model = LinearRegression()
         elif self.model_type == "decision_tree":
-            self.model = DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
+            self.model = DecisionTreeRegressor(max_depth=MODEL_SETTINGS["dt_max_depth"], random_state=RANDOM_SEED)
         elif self.model_type == "random_forest":
-            self.model = RandomForestRegressor(n_estimators=100, max_depth=5, random_state=RANDOM_SEED, n_jobs=-1)
+            self.model = RandomForestRegressor(n_estimators=MODEL_SETTINGS["rf_n_estimators"], max_depth=MODEL_SETTINGS["rf_max_depth"], random_state=RANDOM_SEED, n_jobs=-1)
         else:
             raise ValueError(f"Unknown model type: {self.model_type}")
         
@@ -99,9 +99,9 @@ class EPTPredictor:
         if self.model_type == "linear_regression":
             self.model = LinearRegression()
         elif self.model_type == "random_forest":
-            self.model = RandomForestRegressor(random_state=RANDOM_SEED)
+            self.model = RandomForestRegressor(n_estimators=MODEL_SETTINGS["rf_n_estimators"], max_depth=MODEL_SETTINGS["rf_max_depth"], random_state=RANDOM_SEED)
         elif self.model_type == "decision_tree":
-            self.model = DecisionTreeRegressor(max_depth=5, random_state=RANDOM_SEED)
+            self.model = DecisionTreeRegressor(max_depth=MODEL_SETTINGS["dt_max_depth"], random_state=RANDOM_SEED)
         else:
             raise ValueError(f"Unsupported EPT model_type: {self.model_type}")
         self.model.fit(X_train, y_train)

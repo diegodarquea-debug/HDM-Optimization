@@ -15,6 +15,7 @@ from .config import (
     BQ_TABLE,
     BQ_LOCATION,
     BQ_TIMEOUT_SECONDS,
+    BQ_DEFAULT_LOOKBACK_DAYS,
     DATA_SOURCE,
 )
 
@@ -107,11 +108,11 @@ def load_bigquery_data(query: Optional[str] = None,
     query_params = []
     
     if query is None:
-        # Default query (no parameters)
+        # Default query (no parameters) — lookback controlled by BQ_DEFAULT_LOOKBACK_DAYS
         query = f"""
             SELECT *
             FROM `{resolved_project}.{BQ_DATASET}.{BQ_TABLE}`
-            WHERE momento_exacto >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+            WHERE momento_exacto >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {BQ_DEFAULT_LOOKBACK_DAYS} DAY)
         """
     else:
         # Custom query: prepare parameters if referenced
