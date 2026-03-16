@@ -32,7 +32,7 @@ vendor_scope AS (
     AND attr.attributes.fixed_vendor_grade = (SELECT target_grade FROM params)
     AND attr.attributes.is_latest_record = TRUE
     AND p.is_active
-    AND (ARRAY_LENGTH(@partner_ids) = 0 OR p.partner_id IN UNNEST(@partner_ids))
+    AND (COALESCE(ARRAY_LENGTH(@partner_ids), 0) = 0 OR p.partner_id IN UNNEST(@partner_ids))
 ),
 
 time_grid AS (
