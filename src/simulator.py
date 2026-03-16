@@ -252,7 +252,16 @@ class HDMSimulator:
 
             sim_params.append((u1, u2, u3, delta_ept, duracion_hdm))
 
-        results = Parallel(n_jobs=-1)(
+        # Detect if running in JupyterHub or restricted environment
+        # n_jobs=-1 causes deadlocks in shared environments; use n_jobs=2 instead
+        import os
+        is_jupyterhub = 'JUPYTERHUB' in os.environ or '/home/jovyan' in os.getcwd()
+        n_jobs = 2 if is_jupyterhub else -1
+        
+        if DEBUG:
+            print(f"[SIMULATOR] n_jobs={n_jobs} (JupyterHub detected: {is_jupyterhub})")
+
+        results = Parallel(n_jobs=n_jobs)(
             delayed(self.simulate_scenario)(
                 df,
                 u1,
