@@ -160,7 +160,7 @@ MODEL_TYPE = "random_forest"
 # -----------------------------------------------------------------------------
 # BIGQUERY (JupyterHub: uses Default Application Credentials)
 # -----------------------------------------------------------------------------
-GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", None)
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", None))
 BQ_DATASET = os.getenv("BQ_DATASET", None)
 BQ_TABLE = os.getenv("BQ_TABLE", None)
 BQ_LOCATION = os.getenv("BQ_LOCATION", "US")

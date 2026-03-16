@@ -87,10 +87,22 @@ def load_bigquery_data(query: Optional[str] = None,
         logger.error("google-cloud-bigquery not installed.")
         raise ImportError("Please install google-cloud-bigquery to use BigQuery loading.")
 
-    if not GCP_PROJECT_ID or not BQ_DATASET or not BQ_TABLE:
-        if not query:
-            raise ValueError("BigQuery configuration missing and no query provided.")
-        logger.warning("Using custom query without project/dataset/table config.")
+    resolved_project = GCP_PROJECT_ID
+
+    if query is None and (not resolved_project or not BQ_DATASET or not BQ_TABLE):
+        raise ValueError(
+            "BigQuery configuration missing for default table query. Set GCP_PROJECT_ID (or GOOGLE_CLOUD_PROJECT), "
+            "BQ_DATASET and BQ_TABLE, or provide a custom SQL query with --bq-query-file."
+        )
+
+    if query is not None and not resolved_project:
+        raise ValueError(
+            "Missing GCP project ID for BigQuery client initialization. "
+            "Set GCP_PROJECT_ID or GOOGLE_CLOUD_PROJECT in your environment."
+        )
+
+    if query is not None and (not BQ_DATASET or not BQ_TABLE):
+        logger.info("Using custom SQL query without BQ_DATASET/BQ_TABLE defaults.")
 
     query_params = []
     
@@ -98,7 +110,7 @@ def load_bigquery_data(query: Optional[str] = None,
         # Default query (no parameters)
         query = f"""
             SELECT *
-            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.{BQ_TABLE}`
+            FROM `{resolved_project}.{BQ_DATASET}.{BQ_TABLE}`
             WHERE momento_exacto >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
         """
     else:
@@ -124,7 +136,13 @@ def load_bigquery_data(query: Optional[str] = None,
             query_params.append(inferred)
 
     # Use Default Application Credentials (environment auto-detection)
-    client = bigquery.Client(project=GCP_PROJECT_ID)
+    try:
+        client = bigquery.Client(project=resolved_project)
+    except OSError as exc:
+        raise OSError(
+            "BigQuery client could not determine a project. "
+            "Set GCP_PROJECT_ID or GOOGLE_CLOUD_PROJECT before running the pipeline."
+        ) from exc
     
     job_config = bigquery.QueryJobConfig(query_parameters=query_params) if query_params else None
     logger.info(f"Executing BigQuery query with {len(query_params)} parameters...")
