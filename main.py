@@ -10,6 +10,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List
+from tqdm import tqdm
 
 from src.config import (
     N_SIMULATIONS,
@@ -185,57 +186,76 @@ def run_franchise_mode(
     optimization_budget = N_OPTIMIZATION_CALLS if optimization_scope == "global" else max(1, N_OPTIMIZATION_CALLS // 2)
 
     all_cluster_results = []
+    total_progress_steps = max(1, len(cluster_specs) * (simulation_budget + optimization_budget))
+    progress_bar = tqdm(total=total_progress_steps, desc="Franchise optimization", dynamic_ncols=True)
 
-    for cluster_name, cluster_partners, df_cluster in cluster_specs:
+    try:
+        for cluster_name, cluster_partners, df_cluster in cluster_specs:
 
-        logger.info(f"Optimizing Cluster: {cluster_name} ({len(cluster_partners)} partners)")
+            logger.info(f"Optimizing Cluster: {cluster_name} ({len(cluster_partners)} partners)")
 
-        analysis = analyze_data(df_cluster)
-        baseline_metrics = analysis["baseline_metrics"]
-        awt_predictor, ept_predictor = train_models(df_cluster)
+            analysis = analyze_data(df_cluster)
+            baseline_metrics = analysis["baseline_metrics"]
+            awt_predictor, ept_predictor = train_models(df_cluster)
 
-        partner_payloads = []
-        for pid in cluster_partners:
-            df_p = df[df["partner_id"] == pid].copy()
-            partner_payloads.append({
-                "partner_id": pid,
-                "partner_name": df_p["partner_name"].iloc[0] if "partner_name" in df_p.columns else None,
-                "df": df_p,
-                "baseline_metrics": calculate_baseline_metrics(df_p),
+            partner_payloads = []
+            for pid in cluster_partners:
+                df_p = df[df["partner_id"] == pid].copy()
+                partner_payloads.append({
+                    "partner_id": pid,
+                    "partner_name": df_p["partner_name"].iloc[0] if "partner_name" in df_p.columns else None,
+                    "df": df_p,
+                    "baseline_metrics": calculate_baseline_metrics(df_p),
+                })
+
+            def simulation_progress(_completed, _total, current_cluster=cluster_name):
+                progress_bar.set_description(f"{current_cluster}: simulating")
+                progress_bar.update(1)
+
+            simulator = HDMSimulator(awt_predictor, ept_predictor, baseline_metrics)
+            mc_df = simulator.run_simulations(
+                df_cluster,
+                THRESHOLDS,
+                n_sims=simulation_budget,
+                progress_callback=simulation_progress,
+            )
+            mc_df["objective_score"] = (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"]) - (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
+
+            top_k = BAYESIAN_SETTINGS.get("mc_seed_top_k", 20)
+            mc_valid = mc_df[mc_df["ept_increase"] <= MAX_EPT_INCREASE].copy()
+            if mc_valid.empty: mc_valid = mc_df.copy()
+            mc_top = mc_valid.sort_values("objective_score", ascending=False).head(top_k)
+            bayes_x0 = mc_top[["u1", "u2", "u3", "delta_ept", "duracion_hdm"]].values.tolist()
+
+            def optimization_progress(_completed, _total, current_cluster=cluster_name):
+                progress_bar.set_description(f"{current_cluster}: optimizing")
+                progress_bar.update(1)
+
+            optimizer, opt_result = optimize_hdm_thresholds(
+                df_cluster, awt_predictor, ept_predictor, baseline_metrics,
+                n_calls=optimization_budget, method="gp_minimize",
+                franchise_payloads=partner_payloads, x0=bayes_x0,
+                progress_callback=optimization_progress,
+            )
+
+            top_3 = optimizer.get_top_3_strategies()
+            best_config = top_3.get("Equilibrada") or top_3.get("Agresiva") or (list(top_3.values())[0] if top_3 else {})
+            best_config["cluster"] = cluster_name
+
+            franchise_eval = evaluate_franchise_configuration(
+                partner_payloads, awt_predictor, ept_predictor,
+                best_config["u1"], best_config["u2"], best_config["u3"],
+                best_config["delta_ept"], best_config["duracion_hdm"]
+            )
+
+            all_cluster_results.append({
+                "cluster": cluster_name,
+                "best_config": best_config,
+                "evaluation": franchise_eval,
+                "optimizer": optimizer
             })
-
-        simulator = HDMSimulator(awt_predictor, ept_predictor, baseline_metrics)
-        mc_df = simulator.run_simulations(df_cluster, THRESHOLDS, n_sims=simulation_budget)
-        mc_df["objective_score"] = (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"]) - (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
-
-        top_k = BAYESIAN_SETTINGS.get("mc_seed_top_k", 20)
-        mc_valid = mc_df[mc_df["ept_increase"] <= MAX_EPT_INCREASE].copy()
-        if mc_valid.empty: mc_valid = mc_df.copy()
-        mc_top = mc_valid.sort_values("objective_score", ascending=False).head(top_k)
-        bayes_x0 = mc_top[["u1", "u2", "u3", "delta_ept", "duracion_hdm"]].values.tolist()
-
-        optimizer, opt_result = optimize_hdm_thresholds(
-            df_cluster, awt_predictor, ept_predictor, baseline_metrics,
-            n_calls=optimization_budget, method="gp_minimize",
-            franchise_payloads=partner_payloads, x0=bayes_x0
-        )
-
-        top_3 = optimizer.get_top_3_strategies()
-        best_config = top_3.get("Equilibrada") or top_3.get("Agresiva") or (list(top_3.values())[0] if top_3 else {})
-        best_config["cluster"] = cluster_name
-
-        franchise_eval = evaluate_franchise_configuration(
-            partner_payloads, awt_predictor, ept_predictor,
-            best_config["u1"], best_config["u2"], best_config["u3"],
-            best_config["delta_ept"], best_config["duracion_hdm"]
-        )
-
-        all_cluster_results.append({
-            "cluster": cluster_name,
-            "best_config": best_config,
-            "evaluation": franchise_eval,
-            "optimizer": optimizer
-        })
+    finally:
+        progress_bar.close()
 
     _save_clustered_outputs(all_cluster_results, output_dir)
     return all_cluster_results

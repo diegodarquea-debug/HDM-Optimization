@@ -228,7 +228,13 @@ class HDMSimulator:
             "activation_delay_applied": ACTIVATION_DELAY_MINUTES,
         }
     
-    def run_simulations(self, df: pd.DataFrame, param_space: Dict[str, Any], n_sims: int = 100) -> pd.DataFrame:
+    def run_simulations(
+        self,
+        df: pd.DataFrame,
+        param_space: Dict[str, Any],
+        n_sims: int = 100,
+        progress_callback=None,
+    ) -> pd.DataFrame:
         """
         Run multiple Monte Carlo simulations in parallel.
         """
@@ -266,9 +272,12 @@ class HDMSimulator:
         if DEBUG:
             print(f"[SIMULATOR] n_jobs={n_jobs} (JupyterHub detected: {is_jupyterhub})")
 
+        use_internal_tqdm = progress_callback is None
+
         if n_jobs == 1:
             results = []
-            for idx, (u1, u2, u3, delta_ept, duracion_hdm) in enumerate(tqdm(sim_params, desc="Simulating"), start=1):
+            iterator = tqdm(sim_params, desc="Simulating") if use_internal_tqdm else sim_params
+            for idx, (u1, u2, u3, delta_ept, duracion_hdm) in enumerate(iterator, start=1):
                 results.append(
                     self.simulate_scenario(
                         df,
@@ -279,7 +288,9 @@ class HDMSimulator:
                         duracion_hdm,
                     )
                 )
-                if n_sims <= 20 or idx % 5 == 0:
+                if progress_callback is not None:
+                    progress_callback(idx, n_sims)
+                elif n_sims <= 20 or idx % 5 == 0:
                     logger.info(f"Simulation progress: {idx}/{n_sims} scenarios completed")
         else:
             results = Parallel(n_jobs=n_jobs)(
@@ -291,7 +302,7 @@ class HDMSimulator:
                     delta_ept,
                     duracion_hdm,
                 )
-                for (u1, u2, u3, delta_ept, duracion_hdm) in tqdm(sim_params, desc="Simulating")
+                for (u1, u2, u3, delta_ept, duracion_hdm) in (tqdm(sim_params, desc="Simulating") if use_internal_tqdm else sim_params)
             )
         return pd.DataFrame(results)
     

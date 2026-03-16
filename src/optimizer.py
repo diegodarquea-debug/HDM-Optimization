@@ -106,7 +106,8 @@ class HDMOptimizer:
         return float(total_loss)
     
     def optimize(self, n_calls: Optional[int] = None, method: str = "gp_minimize",
-                 random_state: int = 42, x0: Optional[List[List[Any]]] = None) -> Any:
+                 random_state: int = 42, x0: Optional[List[List[Any]]] = None,
+                 progress_callback=None) -> Any:
         """Run Bayesian optimization."""
         n_calls = int(n_calls or N_OPTIMIZATION_CALLS)
         if n_calls < 1:
@@ -121,8 +122,13 @@ class HDMOptimizer:
             Integer(int(THRESHOLDS["duracion_hdm"][0]), int(THRESHOLDS["duracion_hdm"][1]), name="duracion_hdm"),
         ]
         
-        pbar = tqdm(total=n_calls, desc="[OPTIMIZER] Bayesian Search")
-        def callback(res): pbar.update(1)
+        pbar = None if progress_callback is not None else tqdm(total=n_calls, desc="[OPTIMIZER] Bayesian Search")
+
+        def callback(res):
+            if progress_callback is not None:
+                progress_callback(len(res.func_vals), n_calls)
+            elif pbar is not None:
+                pbar.update(1)
         
         warnings.filterwarnings("ignore", message="The objective has been evaluated at point.*")
 
@@ -166,7 +172,8 @@ class HDMOptimizer:
         else:
             raise ValueError(f"Unknown method: {method}")
         
-        pbar.close()
+        if pbar is not None:
+            pbar.close()
         logger.info(f"Optimization complete. Best loss: {result.fun:.3f}")
         return result
     
@@ -210,7 +217,8 @@ def optimize_hdm_thresholds(df: pd.DataFrame, awt_predictor: Any, ept_predictor:
                            baseline_metrics: Dict[str, Any], n_calls: Optional[int] = None,
                            method: str = "gp_minimize",
                            franchise_payloads: Optional[List[Dict[str, Any]]] = None,
-                           x0: Optional[List[List[Any]]] = None) -> Tuple[HDMOptimizer, Any]:
+                           x0: Optional[List[List[Any]]] = None,
+                           progress_callback=None) -> Tuple[HDMOptimizer, Any]:
     optimizer = HDMOptimizer(df, awt_predictor, ept_predictor, baseline_metrics, franchise_payloads=franchise_payloads)
-    result = optimizer.optimize(n_calls=n_calls, method=method, x0=x0)
+    result = optimizer.optimize(n_calls=n_calls, method=method, x0=x0, progress_callback=progress_callback)
     return optimizer, result
