@@ -93,18 +93,19 @@ BAYESIAN_SETTINGS = {
 # -----------------------------------------------------------------------------
 # ⚠️ IMPORTANTE: Lógica estricta AND.
 # HDM se activa SOLO cuando u1 AND u2 AND u3 son TRUE simultáneamente.
+# UPDATED for JupyterHub deployment (14-day training window)
 THRESHOLDS = {
     # u1 = órdenes pendientes (umbral de activación).
     "u1": (3, 10),
 
-    # u2 = riders cercanos (umbral de activación).
+    # u2 = riders cercanos (umbral de activación) - narrowed per P95 analysis.
     "u2": (1, 3),
 
-    # u3 = espera máxima (umbral de activación, minutos).
-    "u3": (4, 10),
+    # u3 = espera máxima (umbral de activación, minutos) - earlier engagement.
+    "u3": (5, 10),
 
-    # delta_ept = minutos EXTRA de EPT mientras HDM está activo.
-    "delta_ept": [2, 4, 6, 8, 10],
+    # delta_ept = minutos EXTRA de EPT mientras HDM está activo - higher thresholds only.
+    "delta_ept": [4, 6, 8, 10],
 
     # duracion_hdm = duración del HDM por activación (minutos).
     "duracion_hdm": (10, 20),
@@ -131,9 +132,10 @@ ACTIVATION_DELAY_MINUTES = 2
 
 # Objective weights used by optimizer:
 # score = (awt_weight * awt_improvement) - (ept_penalty * ept_increase)
+# UPDATED for JupyterHub deployment: more aggressive on AWT reduction, more permissive on EPT increase
 OBJECTIVE_WEIGHTS = {
-    "awt": 2.0,
-    "ept_penalty": 0.2,
+    "awt": 2.5,
+    "ept_penalty": 0.10,
 }
 
 # Smooth penalty strengths used in optimizer objective.
@@ -156,10 +158,15 @@ TRAIN_TEST_SPLIT = 0.6
 MODEL_TYPE = "random_forest"
 
 # -----------------------------------------------------------------------------
-# BIGQUERY (optional / future integration)
+# BIGQUERY (JupyterHub: uses Default Application Credentials)
 # -----------------------------------------------------------------------------
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", None)
 BQ_DATASET = os.getenv("BQ_DATASET", None)
 BQ_TABLE = os.getenv("BQ_TABLE", None)
+BQ_LOCATION = os.getenv("BQ_LOCATION", "US")
+BQ_TIMEOUT_SECONDS = int(os.getenv("BQ_TIMEOUT_SECONDS", "300"))
+
+# Data source mode: auto | csv | bigquery
+DATA_SOURCE = os.getenv("HDM_DATA_SOURCE", "auto").lower()
 
 DEBUG = (LOG_LEVEL == "DEBUG")

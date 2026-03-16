@@ -8,6 +8,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 from typing import Dict, Any, List
 
 from src.config import (
@@ -27,6 +28,19 @@ from src.simulator import HDMSimulator, evaluate_franchise_configuration
 from src.optimizer import optimize_hdm_thresholds
 
 logger = logging.getLogger("hdm_pipeline")
+
+
+def _get_versioned_output_dir(output_base_dir: Path = OUTPUT_DIR) -> Path:
+    """
+    Create versioned output directory for this run.
+    Format: outputs/runs/YYYYMMDD_HHMMSS_run/
+    Ensures incremental persistence for JupyterHub sessions that may be interrupted.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    versioned_dir = output_base_dir / "runs" / f"{timestamp}_run"
+    versioned_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Versioned output directory: {versioned_dir}")
+    return versioned_dir
 
 def process_partner(df_partner: pd.DataFrame, partner_id: Any, partner_name: str = None) -> Dict[str, Any]:
     """Process a single partner: analyze, train, simulate, optimize."""

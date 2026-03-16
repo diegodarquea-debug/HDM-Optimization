@@ -7,14 +7,24 @@ import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List, Union, Any
 import pandas as pd
-from .config import RAW_DATA_PATH, GCP_PROJECT_ID, BQ_DATASET, BQ_TABLE
+from .config import RAW_DATA_PATH, GCP_PROJECT_ID, BQ_DATASET, BQ_TABLE, BQ_LOCATION, BQ_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
-def load_bigquery_data(query: Optional[str] = None) -> pd.DataFrame:
+def load_bigquery_data(query: Optional[str] = None,
+                       start_date: Optional[pd.Timestamp] = None,
+                       end_date: Optional[pd.Timestamp] = None,
+                       partner_ids: Optional[List[Any]] = None) -> pd.DataFrame:
     """
-    Load data from Google BigQuery.
-    Requires GOOGLE_APPLICATION_CREDENTIALS to be set.
+    Load data from Google BigQuery using Default Application Credentials.
+    
+    Supports parameterized queries with @start_date, @end_date, @partner_ids.
+    
+    Parameters
+    ----------
+    query: optional custom SQL query (else uses default hardcoded query)
+    start_date, end_date: date filters
+    partner_ids: list of partner IDs to filter (array parameter)
     """
     try:
         from google.cloud import bigquery
@@ -23,23 +33,42 @@ def load_bigquery_data(query: Optional[str] = None) -> pd.DataFrame:
         raise ImportError("Please install google-cloud-bigquery to use BigQuery loading.")
 
     if not GCP_PROJECT_ID or not BQ_DATASET or not BQ_TABLE:
-        logger.warning("BigQuery config missing in config.py. Falling back to default query.")
-        # We can't really run a query without a project, but we'll try if a query is provided
         if not query:
             raise ValueError("BigQuery configuration missing and no query provided.")
+        logger.warning("Using custom query without project/dataset/table config.")
 
-    client = bigquery.Client(project=GCP_PROJECT_ID)
-
-    if not query:
+    # Prepare query parameters
+    query_params = []
+    
+    if query is None:
+        # Default query (no parameters)
         query = f"""
             SELECT *
             FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.{BQ_TABLE}`
             WHERE momento_exacto >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
         """
+    else:
+        # Custom query: prepare parameters if referenced
+        if "@start_date" in query and start_date:
+            sd = pd.Timestamp(start_date).date()
+            query_params.append(bigquery.ScalarQueryParameter("start_date", "DATE", sd))
+        if "@end_date" in query and end_date:
+            ed = pd.Timestamp(end_date).date()
+            query_params.append(bigquery.ScalarQueryParameter("end_date", "DATE", ed))
+        if "@partner_ids" in query and partner_ids:
+            pids = [int(pid) for pid in partner_ids if pid]
+            query_params.append(bigquery.ArrayQueryParameter("partner_ids", "INT64", pids))
 
-    logger.info(f"Executing BigQuery query: {query[:100]}...")
-    df = client.query(query).to_dataframe()
-    df["momento_exacto"] = pd.to_datetime(df["momento_exacto"])
+    # Use Default Application Credentials (environment auto-detection)
+    client = bigquery.Client(project=GCP_PROJECT_ID)
+    
+    job_config = bigquery.QueryJobConfig(query_parameters=query_params) if query_params else None
+    logger.info(f"Executing BigQuery query with {len(query_params)} parameters...")
+    
+    df = client.query(query, job_config=job_config).to_dataframe()
+    
+    if "momento_exacto" in df.columns:
+        df["momento_exacto"] = pd.to_datetime(df["momento_exacto"])
 
     logger.info(f"Loaded {len(df)} rows from BigQuery")
     return df
