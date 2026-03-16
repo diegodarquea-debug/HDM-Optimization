@@ -139,6 +139,7 @@ def run_franchise_mode(
     all_partners: np.ndarray,
     output_dir: Path = OUTPUT_DIR,
     optimization_scope: str = "global",
+    progress_bar=None,
 ):
     """Execution flow for franchise mode with global or clustered optimization."""
     logger.info(
@@ -186,17 +187,28 @@ def run_franchise_mode(
     optimization_budget = N_OPTIMIZATION_CALLS if optimization_scope == "global" else max(1, N_OPTIMIZATION_CALLS // 2)
 
     all_cluster_results = []
-    total_progress_steps = max(1, len(cluster_specs) * (simulation_budget + optimization_budget))
-    progress_bar = tqdm(total=total_progress_steps, desc="Franchise optimization", dynamic_ncols=True)
+
+    local_progress_bar = progress_bar is None
+    if local_progress_bar:
+        total_progress_steps = max(1, len(cluster_specs) * (simulation_budget + optimization_budget + 3))
+        progress_bar = tqdm(total=total_progress_steps, desc="Franchise optimization", dynamic_ncols=True)
+    else:
+        progress_bar.total = (progress_bar.total or 0) + (len(cluster_specs) * (simulation_budget + optimization_budget + 3))
+        progress_bar.refresh()
 
     try:
         for cluster_name, cluster_partners, df_cluster in cluster_specs:
 
             logger.info(f"Optimizing Cluster: {cluster_name} ({len(cluster_partners)} partners)")
 
+            progress_bar.set_description(f"{cluster_name}: analyzing")
             analysis = analyze_data(df_cluster)
             baseline_metrics = analysis["baseline_metrics"]
+            progress_bar.update(1)
+
+            progress_bar.set_description(f"{cluster_name}: training")
             awt_predictor, ept_predictor = train_models(df_cluster)
+            progress_bar.update(1)
 
             partner_payloads = []
             for pid in cluster_partners:
@@ -254,8 +266,11 @@ def run_franchise_mode(
                 "evaluation": franchise_eval,
                 "optimizer": optimizer
             })
+            progress_bar.set_description(f"{cluster_name}: finalizing")
+            progress_bar.update(1)
     finally:
-        progress_bar.close()
+        if local_progress_bar:
+            progress_bar.close()
 
     _save_clustered_outputs(all_cluster_results, output_dir)
     return all_cluster_results
@@ -300,6 +315,10 @@ def main():
                         help="CSV input path (used if data-source=csv)")
     args = parser.parse_args()
 
+    progress_bar = None
+    if args.mode == "franchise":
+        progress_bar = tqdm(total=5, desc="Loading inputs", dynamic_ncols=True)
+
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
     logger.info(
         f"Execution settings: N_SIMULATIONS={N_SIMULATIONS}, "
@@ -333,6 +352,9 @@ def main():
         partner_ids=partner_ids_filter,
         query_parameters=query_parameters,
     )
+    if progress_bar is not None:
+        progress_bar.set_description("Validating data")
+        progress_bar.update(1)
 
     if args.mode == "franchise" and partner_ids_filter:
         df = df[df["partner_id"].isin(partner_ids_filter)].copy()
@@ -356,6 +378,9 @@ def main():
 
     all_partners = get_unique_partners(df)
     run_output_dir = _get_versioned_output_dir(OUTPUT_DIR)
+    if progress_bar is not None:
+        progress_bar.set_description("Preparing run outputs")
+        progress_bar.update(2)
     
     if args.mode == "partner":
         partner_id = args.partner_id or all_partners[0]
@@ -370,10 +395,18 @@ def main():
             all_partners,
             run_output_dir,
             optimization_scope=args.optimization_scope,
+            progress_bar=progress_bar,
         )
+        if progress_bar is not None:
+            progress_bar.set_description("Saving consolidated outputs")
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
         _log_franchise_optimal_summary(cluster_results, run_output_dir)
+        if progress_bar is not None:
+            progress_bar.update(1)
+            progress_bar.set_description("Completed")
+            progress_bar.update(1)
+            progress_bar.close()
 
 
 def _write_latest_run_pointer(run_output_dir: Path):
