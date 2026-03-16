@@ -204,6 +204,42 @@ python main.py --mode franchise
 ### Modo BigQuery con Query Real
 Permite correr el pipeline con la query operacional parametrizada sin editar el SQL en cada ejecución.
 
+#### Runners simplificados
+
+Para JupyterHub, el camino recomendado es usar uno de estos runners y cambiar solo:
+- `franchise`
+- `grade`
+- `start_date`
+- `end_date`
+
+Smoke test rápido:
+
+```bash
+bash ./run.sh KFC AAA 2026-02-23 2026-03-01
+```
+
+Simulación más realista:
+
+```bash
+bash ./run_realistic.sh KFC AAA 2026-02-16 2026-03-01
+```
+
+Producción completa:
+
+```bash
+bash ./run_prod.sh KFC AAA 2026-02-16 2026-03-01
+```
+
+Perfiles:
+- `run.sh`: `N_SIMULATIONS=10`, `N_OPTIMIZATION_CALLS=5`
+- `run_realistic.sh`: `N_SIMULATIONS=200`, `N_OPTIMIZATION_CALLS=20`
+- `run_prod.sh`: `N_SIMULATIONS=2000`, `N_OPTIMIZATION_CALLS=80`
+
+Recomendación de ventana histórica:
+- Smoke: 7 días
+- Realistic: 14 días
+- Producción: 14 días o más, según costo/tiempo disponible
+
 Con parámetros explícitos:
 
 ```bash
