@@ -15,10 +15,25 @@
 #   - Entity ID is fixed to PY_CL
 #   - Data source is BigQuery
 #   - Dates must be in YYYY-MM-DD format
+#   - Requires GCP_PROJECT_ID or GOOGLE_CLOUD_PROJECT environment variable
 #
 # ============================================================================
 
 set -e
+
+# Validate that required env vars are set
+if [ -z "$GOOGLE_CLOUD_PROJECT" ] && [ -z "$GCP_PROJECT_ID" ]; then
+    echo "ERROR: Missing GCP project configuration!"
+    echo ""
+    echo "Please set the following environment variables:"
+    echo "  export GOOGLE_CLOUD_PROJECT=\"peya-chile\""
+    echo "  export GCP_PROJECT_ID=\"peya-chile\""
+    echo "  export BQ_LOCATION=\"US\""
+    echo ""
+    echo "Then run this script again:"
+    echo "  $0 $@"
+    exit 1
+fi
 
 if [ $# -ne 4 ]; then
     echo "Usage: $0 <FRANCHISE> <GRADE> <START_DATE> <END_DATE>"
@@ -47,6 +62,7 @@ echo "Grade:      $GRADE"
 echo "Date Range: $START_DATE to $END_DATE"
 echo "Country:    Chile (ID: 2)"
 echo "Entity:     PY_CL"
+echo "GCP Project: ${GOOGLE_CLOUD_PROJECT:-$GCP_PROJECT_ID}"
 echo "=========================================="
 echo ""
 
