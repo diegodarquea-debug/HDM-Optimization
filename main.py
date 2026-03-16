@@ -250,8 +250,6 @@ def main():
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
 
-    start_date = pd.to_datetime(args.start_date) if args.start_date else None
-    end_date = pd.to_datetime(args.end_date) if args.end_date else None
     partner_ids_filter = [int(pid.strip()) for pid in args.partner_ids.split(",")] if args.partner_ids else []
 
     bq_query = None
@@ -262,6 +260,10 @@ def main():
         bq_query = bq_query_path.read_text(encoding="utf-8")
 
     args, query_parameters = _collect_bigquery_query_inputs(args, bq_query)
+
+    # Convert dates AFTER collecting inputs (in case prompts updated them)
+    start_date = pd.to_datetime(args.start_date) if args.start_date else None
+    end_date = pd.to_datetime(args.end_date) if args.end_date else None
 
     df = load_and_prepare_data(
         filepath=args.data_file,
