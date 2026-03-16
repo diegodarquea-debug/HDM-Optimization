@@ -62,13 +62,16 @@ def _prompt_if_missing(current_value: Any, prompt_text: str, default: Any = None
 
 
 def _collect_bigquery_query_inputs(args, bq_query: str):
+    """
+    Collect BigQuery query parameters from args or prompts.
+    For franchise/grade/dates: prompt if not provided.
+    For country_id/entity_id: use provided values (typically defaults from args).
+    """
     requires_real_query_inputs = bool(bq_query) and any(
         placeholder in bq_query
         for placeholder in [
             "@target_franchise",
             "@target_grade",
-            "@target_country_id",
-            "@target_entity_id",
             "@start_date",
             "@end_date",
         ]
@@ -77,18 +80,19 @@ def _collect_bigquery_query_inputs(args, bq_query: str):
     if not requires_real_query_inputs:
         return args, {}
 
-    args.start_date = _prompt_if_missing(args.start_date, "Start date (YYYY-MM-DD)")
-    args.end_date = _prompt_if_missing(args.end_date, "End date (YYYY-MM-DD)")
+    # These three MUST be provided by user
     args.franchise = _prompt_if_missing(args.franchise, "Franchise", default="KFC")
     args.grade = _prompt_if_missing(args.grade, "Grade", default="AAA")
-    args.country_id = int(_prompt_if_missing(args.country_id, "Country ID", default=2))
-    args.entity_id = _prompt_if_missing(args.entity_id, "Entity ID", default="PY_CL")
+    args.start_date = _prompt_if_missing(args.start_date, "Start date (YYYY-MM-DD)")
+    args.end_date = _prompt_if_missing(args.end_date, "End date (YYYY-MM-DD)")
 
+    # These are fixed (from args defaults), no prompting needed
+    # But we include them in query_parameters for BigQuery
     query_parameters = {
         "target_franchise": str(args.franchise),
         "target_grade": str(args.grade),
-        "target_country_id": int(args.country_id),
-        "target_entity_id": str(args.entity_id),
+        "target_country_id": int(args.country_id),  # Always has default=2
+        "target_entity_id": str(args.entity_id),    # Always has default='PY_CL'
     }
     return args, query_parameters
 
@@ -226,26 +230,39 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: P
 def main():
     configure_logging()
 
-    parser = argparse.ArgumentParser(description="HDM Optimization Pipeline")
-    parser.add_argument("--mode", choices=["partner", "franchise"], default="franchise")
-    parser.add_argument("--partner-id", type=int, default=None)
+    parser = argparse.ArgumentParser(
+        description="HDM Optimization Pipeline - Franchise Mode (Chile/KFC)"
+    )
+    
+    # **REQUIRED PARAMETERS** (user must specify these)
+    parser.add_argument("--franchise", type=str, required=True,
+                        help="Franchise name (e.g. KFC, Burger King, etc.)")
+    parser.add_argument("--grade", type=str, required=True,
+                        help="Vendor grade (AAA, AA, A)")
+    parser.add_argument("--start-date", type=str, required=True,
+                        help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", type=str, required=True,
+                        help="End date (YYYY-MM-DD)")
+    
+    # FIXED PARAMETERS (for Chile/KFC backtesting - change only if needed)
+    parser.add_argument("--mode", choices=["partner", "franchise"], default="franchise", 
+                        help="Execution mode (default: franchise)")
+    parser.add_argument("--data-source", choices=["auto", "csv", "bigquery"], default="bigquery",
+                        help="Data source (default: bigquery)")
+    parser.add_argument("--bq-query-file", type=str, default="sql/franchise_input.sql",
+                        help="BigQuery SQL file (default: sql/franchise_input.sql)")
+    parser.add_argument("--country-id", type=int, default=2,
+                        help="Country ID (default: 2 for Chile)")
+    parser.add_argument("--entity-id", type=str, default="PY_CL",
+                        help="Entity ID (default: PY_CL for Chile)")
+    
+    # OPTIONAL PARAMETERS (for advanced usage)
+    parser.add_argument("--partner-id", type=int, default=None,
+                        help="Single partner ID (for partner mode)")
     parser.add_argument("--partner-ids", type=str, default=None,
-                        help="Comma-separated partner IDs for franchise subset (e.g. 101,102,103)")
-    parser.add_argument("--data-source", choices=["auto", "csv", "bigquery"], default=DATA_SOURCE)
+                        help="Comma-separated partner IDs for franchise subset")
     parser.add_argument("--data-file", type=str, default=None,
-                        help="CSV input path override (used when data-source=csv)")
-    parser.add_argument("--start-date", type=str, default=None, help="Start date (YYYY-MM-DD)")
-    parser.add_argument("--end-date", type=str, default=None, help="End date (YYYY-MM-DD)")
-    parser.add_argument("--bq-query-file", type=str, default=None,
-                        help="Path to SQL file with BigQuery parameters such as start_date, end_date, franchise, grade and partner_ids")
-    parser.add_argument("--franchise", type=str, default=None,
-                        help="Franchise name used by the BigQuery query (e.g. KFC)")
-    parser.add_argument("--grade", type=str, default=None,
-                        help="Vendor grade used by the BigQuery query (AAA, AA, A)")
-    parser.add_argument("--country-id", type=int, default=None,
-                        help="Country ID used by the BigQuery query (default: 2 for Chile)")
-    parser.add_argument("--entity-id", type=str, default=None,
-                        help="Entity ID used by the BigQuery query (default: PY_CL)")
+                        help="CSV input path (used if data-source=csv)")
     args = parser.parse_args()
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
