@@ -1,4 +1,4 @@
--- BigQuery backtesting query for HDM Optimization.
+-- BigQuery backtesting query for HDM Optimization (Franquicia + Grade Integration).
 -- Parameters expected by the loader:
 --   @start_date (DATE, required)
 --   @end_date (DATE, required)
@@ -27,9 +27,9 @@ vendor_scope AS (
   INNER JOIN `peya-data-origins-pro.cl_core.growth_vendor_attributes` attr
     ON CAST(p.partner_id AS STRING) = attr.vendor_code
   WHERE p.country_id = (SELECT target_country_id FROM params)
-    AND UPPER(p.franchise.franchise_name) LIKE CONCAT('%', UPPER((SELECT target_franchise FROM params)), '%')
+    AND UPPER(p.franchise.franchise_name) LIKE CONCAT('%', (SELECT target_franchise FROM params), '%')
     AND attr.entity_id = (SELECT target_entity_id FROM params)
-    AND UPPER(COALESCE(attr.attributes.fixed_vendor_grade, '')) = UPPER((SELECT target_grade FROM params))
+    AND attr.attributes.fixed_vendor_grade = (SELECT target_grade FROM params)
     AND attr.attributes.is_latest_record = TRUE
     AND p.is_active
     AND (ARRAY_LENGTH(@partner_ids) = 0 OR p.partner_id IN UNNEST(@partner_ids))
@@ -111,7 +111,7 @@ SELECT
   COUNT(DISTINCT rp.rider_id) AS riders_cerca,
   ROUND(COALESCE(AVG(op.order_ept_min), 0), 2) AS ept_promedio_min,
   MAX(CASE WHEN op.is_hd_order THEN 1 ELSE 0 END) AS hdm_activo,
-  MAX(op.hdm_author) AS hdm_autor,
+  ARRAY_AGG(op.hdm_author IGNORE NULLS ORDER BY op.arrived_at ASC LIMIT 1)[SAFE_OFFSET(0)] AS hdm_autor,
   COALESCE(MAX(SAFE_DIVIDE(DATETIME_DIFF(tg.dt_snapshot, DATETIME(rp.start_at, 'America/Santiago'), SECOND), 60.0)), 0) AS max_awt_espera_min
 FROM time_grid tg
 CROSS JOIN vendor_scope vs
