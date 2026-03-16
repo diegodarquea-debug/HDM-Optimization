@@ -332,6 +332,7 @@ def main():
         cluster_results = run_franchise_mode(df, all_partners, run_output_dir)
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
+        _log_franchise_optimal_summary(cluster_results, run_output_dir)
 
 
 def _write_latest_run_pointer(run_output_dir: Path):
@@ -340,6 +341,44 @@ def _write_latest_run_pointer(run_output_dir: Path):
     pointer_path.write_text(str(run_output_dir), encoding="utf-8")
     logger.info(f"Latest run pointer updated: {pointer_path}")
     logger.info(f"Latest run directory: {run_output_dir}")
+
+
+def _log_franchise_optimal_summary(all_cluster_results, run_output_dir: Path):
+    """Print a concise franchise optimization summary to the terminal."""
+    if not all_cluster_results:
+        return
+
+    logger.info("============================================================")
+    logger.info("FRANCHISE OPTIMAL CONFIG SUMMARY")
+    logger.info("============================================================")
+
+    global_result = next((res for res in all_cluster_results if res.get("cluster") == "Global"), None)
+    if global_result:
+        cfg = global_result.get("best_config", {})
+        logger.info(
+            "Global optimum | u1=%s | u2=%s | u3=%s | delta_ept=%s | duracion_hdm=%s | awt_improvement=%s | ept_increase=%s",
+            cfg.get("u1"),
+            cfg.get("u2"),
+            cfg.get("u3"),
+            cfg.get("delta_ept"),
+            cfg.get("duracion_hdm"),
+            cfg.get("awt_improvement"),
+            cfg.get("ept_increase"),
+        )
+
+    for res in all_cluster_results:
+        cfg = res.get("best_config", {})
+        logger.info(
+            "Cluster %s | u1=%s | u2=%s | u3=%s | delta_ept=%s | duracion_hdm=%s",
+            res.get("cluster"),
+            cfg.get("u1"),
+            cfg.get("u2"),
+            cfg.get("u3"),
+            cfg.get("delta_ept"),
+            cfg.get("duracion_hdm"),
+        )
+
+    logger.info(f"Detailed config CSV: {run_output_dir / 'franchise_optimal_config.csv'}")
 
 
 def _save_partner_outputs(result, output_dir):
