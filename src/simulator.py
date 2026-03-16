@@ -4,6 +4,7 @@ Monte Carlo simulation for HDM activation scenarios.
 """
 import numpy as np
 import pandas as pd
+import os
 from tqdm import tqdm
 from typing import Dict, List, Optional, Any, Union
 from joblib import Parallel, delayed
@@ -252,26 +253,43 @@ class HDMSimulator:
 
             sim_params.append((u1, u2, u3, delta_ept, duracion_hdm))
 
-        # Detect if running in JupyterHub or restricted environment
-        # n_jobs=-1 causes deadlocks in shared environments; use n_jobs=2 instead
-        import os
-        is_jupyterhub = 'JUPYTERHUB' in os.environ or '/home/jovyan' in os.getcwd()
-        n_jobs = 2 if is_jupyterhub else -1
+        # In JupyterHub/shared environments, process-based parallelism can appear
+        # stuck (progress bar stops) or deadlock due worker/process constraints.
+        is_jupyterhub = "JUPYTERHUB" in os.environ or "/home/jovyan" in os.getcwd()
+        default_n_jobs = 1 if is_jupyterhub else -1
+        try:
+            n_jobs = int(os.getenv("HDM_SIM_N_JOBS", str(default_n_jobs)))
+        except ValueError:
+            n_jobs = default_n_jobs
         
         if DEBUG:
             print(f"[SIMULATOR] n_jobs={n_jobs} (JupyterHub detected: {is_jupyterhub})")
 
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(self.simulate_scenario)(
-                df,
-                u1,
-                u2,
-                u3,
-                delta_ept,
-                duracion_hdm,
+        if n_jobs == 1:
+            results = []
+            for (u1, u2, u3, delta_ept, duracion_hdm) in tqdm(sim_params, desc="Simulating"):
+                results.append(
+                    self.simulate_scenario(
+                        df,
+                        u1,
+                        u2,
+                        u3,
+                        delta_ept,
+                        duracion_hdm,
+                    )
+                )
+        else:
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(self.simulate_scenario)(
+                    df,
+                    u1,
+                    u2,
+                    u3,
+                    delta_ept,
+                    duracion_hdm,
+                )
+                for (u1, u2, u3, delta_ept, duracion_hdm) in tqdm(sim_params, desc="Simulating")
             )
-            for (u1, u2, u3, delta_ept, duracion_hdm) in tqdm(sim_params, desc="Simulating")
-        )
         return pd.DataFrame(results)
     
     def generate_stress_day_analysis(self, df: pd.DataFrame, u1: int, u2: int, u3: int,

@@ -63,6 +63,8 @@ echo "Date Range: $START_DATE to $END_DATE"
 echo "Country:    Chile (ID: 2)"
 echo "Entity:     PY_CL"
 echo "GCP Project: ${GOOGLE_CLOUD_PROJECT:-$GCP_PROJECT_ID}"
+echo "N_SIMULATIONS: ${N_SIMULATIONS:-2000}"
+echo "N_OPTIMIZATION_CALLS: ${N_OPTIMIZATION_CALLS:-80}"
 echo "=========================================="
 echo ""
 

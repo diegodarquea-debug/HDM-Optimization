@@ -14,6 +14,17 @@ from pathlib import Path
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 
+def _get_int_env(name: str, default: int) -> int:
+    """Return integer env var value or fallback to default when missing/invalid."""
+    raw = os.getenv(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 def configure_logging(log_level=None, log_file="pipeline.log") -> None:
     """
     Configure application-wide logging.
@@ -66,7 +77,7 @@ RAW_DATA_PATH = DATA_DIR / "raw_data.csv"
 # Number of random Monte Carlo scenarios (Step 4).
 # QUÉ HACE: Define cuántas configuraciones aleatorias se exploran antes de Bayesian.
 # RECOMENDACIÓN: 200-500 para iteración rápida, 1000-2000 para producción.
-N_SIMULATIONS = 2000
+N_SIMULATIONS = _get_int_env("N_SIMULATIONS", 2000)
 
 # Stress analysis window (used for diagnostic slices in simulator reports)
 STRESS_WINDOW_ROLLING_SIZE = 60
@@ -80,7 +91,7 @@ RANDOM_SEED = 42
 # -----------------------------------------------------------------------------
 # Number of objective-function evaluations in Step 5.
 # RECOMENDACIÓN: 40-60 para iteración rápida, 80-120 para búsqueda profunda.
-N_OPTIMIZATION_CALLS = 80
+N_OPTIMIZATION_CALLS = _get_int_env("N_OPTIMIZATION_CALLS", 80)
 
 # Bayesian internal settings
 BAYESIAN_SETTINGS = {
