@@ -5,6 +5,7 @@ Monte Carlo simulation for HDM activation scenarios.
 import numpy as np
 import pandas as pd
 import os
+import logging
 from tqdm import tqdm
 from typing import Dict, List, Optional, Any, Union
 from joblib import Parallel, delayed
@@ -18,6 +19,9 @@ from .config import (
     STRESS_WINDOW_HALF_SIZE,
     HDM_EFFECT_SETTINGS,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _evaluate_partner_task(p, awt_predictor, ept_predictor, u1, u2, u3, delta_ept, duracion_hdm):
@@ -98,14 +102,11 @@ class HDMSimulator:
         u3_met = (awt_values >= u3)
         and_triggered = u1_met & u2_met & u3_met
 
-        # Optimization: Pre-extract model weights if it's linear regression
+        # Optimization: detect if linear and whether model expects EPT feature
         is_linear = hasattr(self.awt_predictor, 'model') and \
                     hasattr(self.awt_predictor.model, 'coef_') and \
                     hasattr(self.awt_predictor.model, 'intercept_')
-        if is_linear:
-            coefs = self.awt_predictor.model.coef_
-            intercept = self.awt_predictor.model.intercept_
-            has_ept_feat = self.awt_predictor.ept_feature_name is not None
+        has_ept_feat = self.awt_predictor.ept_feature_name is not None
 
         # Factor for HDM effect
         reduction_per_min = HDM_EFFECT_SETTINGS["awt_delta_ept_reduction_per_min"]
@@ -160,24 +161,24 @@ class HDMSimulator:
             ord_i = ordenes_values[i]
             ept_base = max(0.0, float(ept_original_values[i])) if ord_i > 0 else 0.0
             ept_sim = ept_base + delta_ept if hdm_currently_active else ept_base
-            
-            if is_linear:
-                # Fast manual calculation for linear models
-                # features order: [ordenes, riders, hdm, ept (optional)]
-                rid_i = riders_values[i]
-                hdm_val = float(hdm_currently_active)
-                awt_pred = intercept + ord_i * coefs[0] + rid_i * coefs[1] + hdm_val * coefs[2]
-                if has_ept_feat:
-                    awt_pred += ept_sim * coefs[3]
-            else:
-                awt_pred = self.awt_predictor.predict(float(ord_i), float(riders_values[i]),
-                                                     float(hdm_currently_active), ept_sim)
-            
-            if hdm_currently_active and delta_ept > 0:
-                awt_pred *= hdm_factor
-            
-            awt_predicted[i] = max(0.0, awt_pred)
             ept_with_hdm[i] = ept_sim
+
+        # Batch prediction (much faster than row-by-row model.predict calls)
+        hdm_float = hdm_active_sim.astype(float)
+        if has_ept_feat:
+            X_pred = np.column_stack([ordenes_values, riders_values, hdm_float, ept_with_hdm])
+        else:
+            X_pred = np.column_stack([ordenes_values, riders_values, hdm_float])
+
+        if is_linear:
+            awt_raw = self.awt_predictor.model.predict(X_pred)
+        else:
+            awt_raw = self.awt_predictor.model.predict(X_pred)
+
+        if delta_ept > 0:
+            awt_raw = np.where(hdm_active_sim == 1, awt_raw * hdm_factor, awt_raw)
+
+        awt_predicted = np.maximum(0.0, awt_raw)
 
         df_sim["hdm_activated_sim"] = hdm_activated_sim
         df_sim["hdm_active_sim"] = hdm_active_sim
@@ -267,7 +268,7 @@ class HDMSimulator:
 
         if n_jobs == 1:
             results = []
-            for (u1, u2, u3, delta_ept, duracion_hdm) in tqdm(sim_params, desc="Simulating"):
+            for idx, (u1, u2, u3, delta_ept, duracion_hdm) in enumerate(tqdm(sim_params, desc="Simulating"), start=1):
                 results.append(
                     self.simulate_scenario(
                         df,
@@ -278,6 +279,8 @@ class HDMSimulator:
                         duracion_hdm,
                     )
                 )
+                if n_sims <= 20 or idx % 5 == 0:
+                    logger.info(f"Simulation progress: {idx}/{n_sims} scenarios completed")
         else:
             results = Parallel(n_jobs=n_jobs)(
                 delayed(self.simulate_scenario)(
