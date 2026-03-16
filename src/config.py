@@ -25,6 +25,14 @@ def _get_int_env(name: str, default: int) -> int:
         return default
 
 
+def _get_choice_env(name: str, default: str, valid_choices: tuple[str, ...]) -> str:
+    """Return env var value only if it matches allowed choices; otherwise default."""
+    raw = os.getenv(name, default)
+    if raw in valid_choices:
+        return raw
+    return default
+
+
 def configure_logging(log_level=None, log_file="pipeline.log") -> None:
     """
     Configure application-wide logging.
@@ -186,6 +194,47 @@ MODEL_SETTINGS = {
 # -----------------------------------------------------------------------------
 DEFAULT_COUNTRY_ID = int(os.getenv("DEFAULT_COUNTRY_ID", "2"))
 DEFAULT_ENTITY_ID = os.getenv("DEFAULT_ENTITY_ID", "PY_CL")
+
+# Pipeline-level choices/defaults used by CLI and orchestration flow.
+PIPELINE_CHOICES = {
+    "mode": ("partner", "franchise"),
+    "data_source": ("auto", "csv", "bigquery"),
+    "optimization_scope": ("global", "clustered"),
+    "optimizer_method": ("gp_minimize", "forest_minimize"),
+}
+
+PIPELINE_DEFAULTS = {
+    "mode": _get_choice_env("DEFAULT_MODE", "franchise", PIPELINE_CHOICES["mode"]),
+    "data_source": _get_choice_env("DEFAULT_DATA_SOURCE", "bigquery", PIPELINE_CHOICES["data_source"]),
+    "bq_query_file": os.getenv("DEFAULT_BQ_QUERY_FILE", "sql/franchise_input.sql"),
+    "optimization_scope": _get_choice_env(
+        "DEFAULT_OPTIMIZATION_SCOPE",
+        "global",
+        PIPELINE_CHOICES["optimization_scope"],
+    ),
+    "optimizer_method": _get_choice_env(
+        "DEFAULT_OPTIMIZER_METHOD",
+        "gp_minimize",
+        PIPELINE_CHOICES["optimizer_method"],
+    ),
+    "default_franchise": os.getenv("DEFAULT_FRANCHISE", "KFC"),
+    "default_grade": os.getenv("DEFAULT_GRADE", "AAA"),
+    "global_cluster_name": os.getenv("GLOBAL_CLUSTER_NAME", "Global"),
+    "high_volume_cluster_name": os.getenv("HIGH_VOLUME_CLUSTER_NAME", "HighVolume"),
+    "low_volume_cluster_name": os.getenv("LOW_VOLUME_CLUSTER_NAME", "LowVolume"),
+}
+
+CLUSTERING_SETTINGS = {
+    "clustered_budget_divisor": max(1, _get_int_env("CLUSTERED_BUDGET_DIVISOR", 2)),
+}
+
+SIMULATION_RUNTIME_SETTINGS = {
+    "n_jobs_env_var": os.getenv("HDM_SIM_N_JOBS_ENV_VAR", "HDM_SIM_N_JOBS"),
+    "jupyter_default_n_jobs": _get_int_env("JUPYTERHUB_DEFAULT_N_JOBS", 1),
+    "local_default_n_jobs": _get_int_env("LOCAL_DEFAULT_N_JOBS", -1),
+    "progress_log_always_if_n_leq": _get_int_env("SIM_PROGRESS_VERBOSE_UP_TO", 20),
+    "progress_log_every_n": _get_int_env("SIM_PROGRESS_LOG_EVERY_N", 5),
+}
 
 # -----------------------------------------------------------------------------
 # BIGQUERY (JupyterHub: uses Default Application Credentials)

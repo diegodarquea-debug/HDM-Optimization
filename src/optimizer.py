@@ -20,6 +20,7 @@ from .config import (
     STRATEGY_SETTINGS,
     BAYESIAN_SETTINGS,
     RANDOM_SEED,
+    PIPELINE_DEFAULTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,7 +109,7 @@ class HDMOptimizer:
         
         return float(total_loss)
     
-    def optimize(self, n_calls: Optional[int] = None, method: str = "gp_minimize",
+    def optimize(self, n_calls: Optional[int] = None, method: str = PIPELINE_DEFAULTS["optimizer_method"],
                  random_state: int = RANDOM_SEED, x0: Optional[List[List[Any]]] = None,
                  progress_callback=None) -> Any:
         """Run Bayesian optimization."""
@@ -218,7 +219,7 @@ class HDMOptimizer:
 
 def optimize_hdm_thresholds(df: pd.DataFrame, awt_predictor: Any, ept_predictor: Any,
                            baseline_metrics: Dict[str, Any], n_calls: Optional[int] = None,
-                           method: str = "gp_minimize",
+                           method: str = PIPELINE_DEFAULTS["optimizer_method"],
                            franchise_payloads: Optional[List[Dict[str, Any]]] = None,
                            x0: Optional[List[List[Any]]] = None,
                            progress_callback=None) -> Tuple[HDMOptimizer, Any]:

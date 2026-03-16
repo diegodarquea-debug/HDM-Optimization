@@ -24,6 +24,9 @@ from src.config import (
     DATA_SOURCE,
     DEFAULT_COUNTRY_ID,
     DEFAULT_ENTITY_ID,
+    PIPELINE_CHOICES,
+    PIPELINE_DEFAULTS,
+    CLUSTERING_SETTINGS,
     configure_logging,
 )
 from src.data_loader import load_and_prepare_data, get_unique_partners, get_date_range
@@ -33,6 +36,13 @@ from src.simulator import HDMSimulator, evaluate_franchise_configuration
 from src.optimizer import optimize_hdm_thresholds
 
 logger = logging.getLogger("hdm_pipeline")
+
+MODE_PARTNER = PIPELINE_CHOICES["mode"][0]
+MODE_FRANCHISE = PIPELINE_CHOICES["mode"][1]
+SCOPE_GLOBAL = PIPELINE_CHOICES["optimization_scope"][0]
+CLUSTER_GLOBAL_NAME = PIPELINE_DEFAULTS["global_cluster_name"]
+CLUSTER_HIGH_VOLUME_NAME = PIPELINE_DEFAULTS["high_volume_cluster_name"]
+CLUSTER_LOW_VOLUME_NAME = PIPELINE_DEFAULTS["low_volume_cluster_name"]
 
 
 def _get_versioned_output_dir(output_base_dir: Path = OUTPUT_DIR) -> Path:
@@ -84,8 +94,8 @@ def _collect_bigquery_query_inputs(args, bq_query: str):
         return args, {}
 
     # These three MUST be provided by user
-    args.franchise = _prompt_if_missing(args.franchise, "Franchise", default="KFC")
-    args.grade = _prompt_if_missing(args.grade, "Grade", default="AAA")
+    args.franchise = _prompt_if_missing(args.franchise, "Franchise", default=PIPELINE_DEFAULTS["default_franchise"])
+    args.grade = _prompt_if_missing(args.grade, "Grade", default=PIPELINE_DEFAULTS["default_grade"])
     args.start_date = _prompt_if_missing(args.start_date, "Start date (YYYY-MM-DD)")
     args.end_date = _prompt_if_missing(args.end_date, "End date (YYYY-MM-DD)")
 
@@ -94,8 +104,8 @@ def _collect_bigquery_query_inputs(args, bq_query: str):
     query_parameters = {
         "target_franchise": str(args.franchise),
         "target_grade": str(args.grade),
-        "target_country_id": int(args.country_id),  # Always has default=2
-        "target_entity_id": str(args.entity_id),    # Always has default='PY_CL'
+        "target_country_id": int(args.country_id),
+        "target_entity_id": str(args.entity_id),
     }
     return args, query_parameters
 
@@ -113,7 +123,7 @@ def process_partner(df_partner: pd.DataFrame, partner_id: Any, partner_name: str
     
     optimizer, opt_result = optimize_hdm_thresholds(
         df_partner, awt_predictor, ept_predictor, baseline_metrics,
-        n_calls=N_OPTIMIZATION_CALLS, method="gp_minimize"
+        n_calls=N_OPTIMIZATION_CALLS, method=PIPELINE_DEFAULTS["optimizer_method"]
     )
     
     top_3 = optimizer.get_top_3_strategies()
@@ -140,7 +150,7 @@ def run_franchise_mode(
     df: pd.DataFrame,
     all_partners: np.ndarray,
     output_dir: Path = OUTPUT_DIR,
-    optimization_scope: str = "global",
+    optimization_scope: str = PIPELINE_DEFAULTS["optimization_scope"],
     progress_bar=None,
 ):
     """Execution flow for franchise mode with global or clustered optimization."""
@@ -154,8 +164,8 @@ def run_franchise_mode(
         )
 
     cluster_specs = []
-    if optimization_scope == "global":
-        cluster_specs = [("Global", all_partners, df.copy())]
+    if optimization_scope == SCOPE_GLOBAL:
+        cluster_specs = [(CLUSTER_GLOBAL_NAME, all_partners, df.copy())]
     else:
         partner_stats = []
         for pid in all_partners:
@@ -172,12 +182,16 @@ def run_franchise_mode(
             raise ValueError("No partner statistics available to build clusters. Input dataset is empty after filters.")
 
         median_orders = df_stats["avg_orders"].median()
-        df_stats["cluster"] = np.where(df_stats["avg_orders"] >= median_orders, "HighVolume", "LowVolume")
+        df_stats["cluster"] = np.where(
+            df_stats["avg_orders"] >= median_orders,
+            CLUSTER_HIGH_VOLUME_NAME,
+            CLUSTER_LOW_VOLUME_NAME,
+        )
 
         clusters = df_stats["cluster"].unique()
-        cluster_list = list(clusters) + ["Global"]
+        cluster_list = list(clusters) + [CLUSTER_GLOBAL_NAME]
         for cluster_name in cluster_list:
-            if cluster_name == "Global":
+            if cluster_name == CLUSTER_GLOBAL_NAME:
                 cluster_partners = all_partners
                 df_cluster = df.copy()
             else:
@@ -185,8 +199,9 @@ def run_franchise_mode(
                 df_cluster = df[df["partner_id"].isin(cluster_partners)].copy()
             cluster_specs.append((cluster_name, cluster_partners, df_cluster))
 
-    simulation_budget = N_SIMULATIONS if optimization_scope == "global" else max(1, N_SIMULATIONS // 2)
-    optimization_budget = N_OPTIMIZATION_CALLS if optimization_scope == "global" else max(1, N_OPTIMIZATION_CALLS // 2)
+    clustered_divisor = CLUSTERING_SETTINGS["clustered_budget_divisor"]
+    simulation_budget = N_SIMULATIONS if optimization_scope == SCOPE_GLOBAL else max(1, N_SIMULATIONS // clustered_divisor)
+    optimization_budget = N_OPTIMIZATION_CALLS if optimization_scope == SCOPE_GLOBAL else max(1, N_OPTIMIZATION_CALLS // clustered_divisor)
 
     all_cluster_results = []
 
@@ -247,7 +262,7 @@ def run_franchise_mode(
 
             optimizer, opt_result = optimize_hdm_thresholds(
                 df_cluster, awt_predictor, ept_predictor, baseline_metrics,
-                n_calls=optimization_budget, method="gp_minimize",
+                n_calls=optimization_budget, method=PIPELINE_DEFAULTS["optimizer_method"],
                 franchise_payloads=partner_payloads, x0=bayes_x0,
                 progress_callback=optimization_progress,
             )
@@ -295,18 +310,18 @@ def main():
                         help="End date (YYYY-MM-DD)")
     
     # FIXED PARAMETERS (for Chile/KFC backtesting - change only if needed)
-    parser.add_argument("--mode", choices=["partner", "franchise"], default="franchise", 
-                        help="Execution mode (default: franchise)")
-    parser.add_argument("--data-source", choices=["auto", "csv", "bigquery"], default="bigquery",
-                        help="Data source (default: bigquery)")
-    parser.add_argument("--bq-query-file", type=str, default="sql/franchise_input.sql",
-                        help="BigQuery SQL file (default: sql/franchise_input.sql)")
+    parser.add_argument("--mode", choices=list(PIPELINE_CHOICES["mode"]), default=PIPELINE_DEFAULTS["mode"], 
+                        help=f"Execution mode (default: {PIPELINE_DEFAULTS['mode']} — from config.PIPELINE_DEFAULTS)")
+    parser.add_argument("--data-source", choices=list(PIPELINE_CHOICES["data_source"]), default=PIPELINE_DEFAULTS["data_source"],
+                        help=f"Data source (default: {PIPELINE_DEFAULTS['data_source']} — from config.PIPELINE_DEFAULTS)")
+    parser.add_argument("--bq-query-file", type=str, default=PIPELINE_DEFAULTS["bq_query_file"],
+                        help=f"BigQuery SQL file (default: {PIPELINE_DEFAULTS['bq_query_file']} — from config.PIPELINE_DEFAULTS)")
     parser.add_argument("--country-id", type=int, default=DEFAULT_COUNTRY_ID,
                         help=f"Country ID (default: {DEFAULT_COUNTRY_ID} — from config.DEFAULT_COUNTRY_ID)")
     parser.add_argument("--entity-id", type=str, default=DEFAULT_ENTITY_ID,
                         help=f"Entity ID (default: {DEFAULT_ENTITY_ID} — from config.DEFAULT_ENTITY_ID)")
-    parser.add_argument("--optimization-scope", choices=["global", "clustered"], default="global",
-                        help="Optimization scope for franchise mode (default: global)")
+    parser.add_argument("--optimization-scope", choices=list(PIPELINE_CHOICES["optimization_scope"]), default=PIPELINE_DEFAULTS["optimization_scope"],
+                        help=f"Optimization scope (default: {PIPELINE_DEFAULTS['optimization_scope']} — from config.PIPELINE_DEFAULTS)")
     
     # OPTIONAL PARAMETERS (for advanced usage)
     parser.add_argument("--partner-id", type=int, default=None,
@@ -318,7 +333,7 @@ def main():
     args = parser.parse_args()
 
     progress_bar = None
-    if args.mode == "franchise":
+    if args.mode == MODE_FRANCHISE:
         progress_bar = tqdm(total=5, desc="Loading inputs", dynamic_ncols=True)
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
@@ -358,7 +373,7 @@ def main():
         progress_bar.set_description("Validating data")
         progress_bar.update(1)
 
-    if args.mode == "franchise" and partner_ids_filter:
+    if args.mode == MODE_FRANCHISE and partner_ids_filter:
         df = df[df["partner_id"].isin(partner_ids_filter)].copy()
         if df.empty:
             raise ValueError("No data left after applying --partner-ids filter.")
@@ -384,7 +399,7 @@ def main():
         progress_bar.set_description("Preparing run outputs")
         progress_bar.update(2)
     
-    if args.mode == "partner":
+    if args.mode == MODE_PARTNER:
         partner_id = args.partner_id or all_partners[0]
         df_p = df[df["partner_id"] == partner_id].copy()
         result = process_partner(df_p, partner_id, df_p["partner_name"].iloc[0] if "partner_name" in df_p.columns else None)
@@ -428,7 +443,7 @@ def _log_franchise_optimal_summary(all_cluster_results, run_output_dir: Path):
     logger.info("FRANCHISE OPTIMAL CONFIG SUMMARY")
     logger.info("============================================================")
 
-    global_result = next((res for res in all_cluster_results if res.get("cluster") == "Global"), None)
+    global_result = next((res for res in all_cluster_results if res.get("cluster") == CLUSTER_GLOBAL_NAME), None)
     if global_result:
         cfg = global_result.get("best_config", {})
         logger.info(

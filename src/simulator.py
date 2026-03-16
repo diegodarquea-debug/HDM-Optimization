@@ -18,6 +18,7 @@ from .config import (
     STRESS_WINDOW_ROLLING_SIZE,
     STRESS_WINDOW_HALF_SIZE,
     HDM_EFFECT_SETTINGS,
+    SIMULATION_RUNTIME_SETTINGS,
 )
 
 
@@ -263,9 +264,14 @@ class HDMSimulator:
         # In JupyterHub/shared environments, process-based parallelism can appear
         # stuck (progress bar stops) or deadlock due worker/process constraints.
         is_jupyterhub = "JUPYTERHUB" in os.environ or "/home/jovyan" in os.getcwd()
-        default_n_jobs = 1 if is_jupyterhub else -1
+        default_n_jobs = (
+            SIMULATION_RUNTIME_SETTINGS["jupyter_default_n_jobs"]
+            if is_jupyterhub
+            else SIMULATION_RUNTIME_SETTINGS["local_default_n_jobs"]
+        )
+        n_jobs_env_var = SIMULATION_RUNTIME_SETTINGS["n_jobs_env_var"]
         try:
-            n_jobs = int(os.getenv("HDM_SIM_N_JOBS", str(default_n_jobs)))
+            n_jobs = int(os.getenv(n_jobs_env_var, str(default_n_jobs)))
         except ValueError:
             n_jobs = default_n_jobs
         
@@ -290,7 +296,10 @@ class HDMSimulator:
                 )
                 if progress_callback is not None:
                     progress_callback(idx, n_sims)
-                elif n_sims <= 20 or idx % 5 == 0:
+                elif (
+                    n_sims <= SIMULATION_RUNTIME_SETTINGS["progress_log_always_if_n_leq"]
+                    or idx % SIMULATION_RUNTIME_SETTINGS["progress_log_every_n"] == 0
+                ):
                     logger.info(f"Simulation progress: {idx}/{n_sims} scenarios completed")
         else:
             results = Parallel(n_jobs=n_jobs)(
