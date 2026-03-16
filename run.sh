@@ -54,6 +54,11 @@ GRADE="$2"
 START_DATE="$3"
 END_DATE="$4"
 
+# Smoke-test defaults (can be overridden from shell before execution)
+export N_SIMULATIONS="${N_SIMULATIONS:-10}"
+export N_OPTIMIZATION_CALLS="${N_OPTIMIZATION_CALLS:-5}"
+export HDM_SIM_N_JOBS="${HDM_SIM_N_JOBS:-1}"
+
 echo "=========================================="
 echo "HDM Optimization Pipeline - Franchise Mode"
 echo "=========================================="
@@ -63,8 +68,9 @@ echo "Date Range: $START_DATE to $END_DATE"
 echo "Country:    Chile (ID: 2)"
 echo "Entity:     PY_CL"
 echo "GCP Project: ${GOOGLE_CLOUD_PROJECT:-$GCP_PROJECT_ID}"
-echo "N_SIMULATIONS: ${N_SIMULATIONS:-2000}"
-echo "N_OPTIMIZATION_CALLS: ${N_OPTIMIZATION_CALLS:-80}"
+echo "N_SIMULATIONS: ${N_SIMULATIONS}"
+echo "N_OPTIMIZATION_CALLS: ${N_OPTIMIZATION_CALLS}"
+echo "HDM_SIM_N_JOBS: ${HDM_SIM_N_JOBS}"
 echo "=========================================="
 echo ""
 

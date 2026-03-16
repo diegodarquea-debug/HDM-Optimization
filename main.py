@@ -266,6 +266,10 @@ def main():
     args = parser.parse_args()
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
+    logger.info(
+        f"Execution settings: N_SIMULATIONS={N_SIMULATIONS}, "
+        f"N_OPTIMIZATION_CALLS={N_OPTIMIZATION_CALLS}"
+    )
 
     partner_ids_filter = [int(pid.strip()) for pid in args.partner_ids.split(",")] if args.partner_ids else []
 
