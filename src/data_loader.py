@@ -147,6 +147,15 @@ def load_bigquery_data(query: Optional[str] = None,
     
     job_config = bigquery.QueryJobConfig(query_parameters=query_params) if query_params else None
     logger.info(f"Executing BigQuery query with {len(query_params)} parameters...")
+    
+    # Log parameter details for debugging
+    for param in query_params:
+        logger.debug(f"  Parameter: {param.name} = {param.value}")
+    
+    # Log query signature (first 200 chars and query params)
+    query_sig = query[:200].replace('\n', ' ')
+    logger.debug(f"Query: {query_sig}...")
+    logger.debug(f"All parameters: {[(p.name) for p in query_params]}")
 
     query_job = client.query(query, job_config=job_config, location=BQ_LOCATION)
     query_job.result(timeout=BQ_TIMEOUT_SECONDS)
