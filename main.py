@@ -64,7 +64,14 @@ def _prompt_if_missing(current_value: Any, prompt_text: str, default: Any = None
 def _collect_bigquery_query_inputs(args, bq_query: str):
     requires_real_query_inputs = bool(bq_query) and any(
         placeholder in bq_query
-        for placeholder in ["@target_franchise", "@target_grade", "@target_country_id", "@start_date", "@end_date"]
+        for placeholder in [
+            "@target_franchise",
+            "@target_grade",
+            "@target_country_id",
+            "@target_entity_id",
+            "@start_date",
+            "@end_date",
+        ]
     )
 
     if not requires_real_query_inputs:
@@ -75,11 +82,13 @@ def _collect_bigquery_query_inputs(args, bq_query: str):
     args.franchise = _prompt_if_missing(args.franchise, "Franchise", default="KFC")
     args.grade = _prompt_if_missing(args.grade, "Grade", default="AAA")
     args.country_id = int(_prompt_if_missing(args.country_id, "Country ID", default=2))
+    args.entity_id = _prompt_if_missing(args.entity_id, "Entity ID", default="PY_CL")
 
     query_parameters = {
         "target_franchise": str(args.franchise),
         "target_grade": str(args.grade),
         "target_country_id": int(args.country_id),
+        "target_entity_id": str(args.entity_id),
     }
     return args, query_parameters
 
@@ -124,6 +133,11 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: P
     """Execution flow for franchise mode with Cluster-based optimization."""
     logger.info(f"Processing FRANCHISE ({len(all_partners)} partners) with Clustering")
 
+    if df.empty or len(all_partners) == 0:
+        raise ValueError(
+            "No rows were returned for franchise mode. Check BigQuery filters (franchise/grade/entity_id/date range/country_id)."
+        )
+
     # Step 1: Cluster partners based on volume and baseline AWT
     partner_stats = []
     for pid in all_partners:
@@ -137,6 +151,9 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: P
     df_stats = pd.DataFrame(partner_stats)
 
     # Simple clustering: High Volume vs Low Volume
+    if df_stats.empty:
+        raise ValueError("No partner statistics available to build clusters. Input dataset is empty after filters.")
+
     median_orders = df_stats["avg_orders"].median()
     df_stats["cluster"] = np.where(df_stats["avg_orders"] >= median_orders, "HighVolume", "LowVolume")
 
@@ -227,6 +244,8 @@ def main():
                         help="Vendor grade used by the BigQuery query (AAA, AA, A)")
     parser.add_argument("--country-id", type=int, default=None,
                         help="Country ID used by the BigQuery query (default: 2 for Chile)")
+    parser.add_argument("--entity-id", type=str, default=None,
+                        help="Entity ID used by the BigQuery query (default: PY_CL)")
     args = parser.parse_args()
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
@@ -260,6 +279,21 @@ def main():
         df = df[df["partner_id"].isin(partner_ids_filter)].copy()
         if df.empty:
             raise ValueError("No data left after applying --partner-ids filter.")
+
+    if df.empty:
+        details = [
+            f"data_source={args.data_source}",
+            f"start_date={args.start_date}",
+            f"end_date={args.end_date}",
+            f"franchise={args.franchise}",
+            f"grade={args.grade}",
+            f"country_id={args.country_id}",
+            f"entity_id={args.entity_id}",
+        ]
+        raise ValueError(
+            "Query returned 0 rows. Verify filters and source data availability. "
+            + " | ".join(details)
+        )
 
     all_partners = get_unique_partners(df)
     run_output_dir = _get_versioned_output_dir(OUTPUT_DIR)

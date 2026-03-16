@@ -210,6 +210,12 @@ Con parámetros explícitos:
 python main.py --mode franchise --data-source bigquery --bq-query-file sql/franchise_input.sql --franchise KFC --grade AAA --start-date 2026-02-23 --end-date 2026-03-01
 ```
 
+Si necesitas cambiar `entity_id`:
+
+```bash
+python main.py --mode franchise --data-source bigquery --bq-query-file sql/franchise_input.sql --franchise KFC --grade AAA --start-date 2026-02-23 --end-date 2026-03-01 --entity-id PY_CL
+```
+
 Con prompts interactivos en terminal:
 
 ```bash

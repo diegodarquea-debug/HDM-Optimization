@@ -5,6 +5,7 @@
 --   @target_franchise (STRING, required)
 --   @target_grade (STRING, required)
 --   @target_country_id (INT64, optional, default suggested: 2 for Chile)
+--   @target_entity_id (STRING, optional, default: PY_CL)
 --   @partner_ids (ARRAY<INT64>, optional)
 
 WITH params AS (
@@ -13,7 +14,8 @@ WITH params AS (
     @end_date AS end_date,
     @target_franchise AS target_franchise,
     @target_grade AS target_grade,
-    COALESCE(@target_country_id, 2) AS target_country_id
+    COALESCE(@target_country_id, 2) AS target_country_id,
+    COALESCE(@target_entity_id, 'PY_CL') AS target_entity_id
 ),
 
 vendor_scope AS (
@@ -26,8 +28,8 @@ vendor_scope AS (
     ON CAST(p.partner_id AS STRING) = attr.vendor_code
   WHERE p.country_id = (SELECT target_country_id FROM params)
     AND UPPER(p.franchise.franchise_name) LIKE CONCAT('%', UPPER((SELECT target_franchise FROM params)), '%')
-    AND attr.entity_id = 'PY_CL'
-    AND attr.attributes.fixed_vendor_grade = (SELECT target_grade FROM params)
+    AND attr.entity_id = (SELECT target_entity_id FROM params)
+    AND UPPER(COALESCE(attr.attributes.fixed_vendor_grade, '')) = UPPER((SELECT target_grade FROM params))
     AND attr.attributes.is_latest_record = TRUE
     AND p.is_active
     AND (ARRAY_LENGTH(@partner_ids) = 0 OR p.partner_id IN UNNEST(@partner_ids))
