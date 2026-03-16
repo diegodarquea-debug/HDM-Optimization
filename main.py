@@ -133,47 +133,60 @@ def process_partner(df_partner: pd.DataFrame, partner_id: Any, partner_name: str
         "end_date": end_date,
     }
 
-def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: Path = OUTPUT_DIR):
-    """Execution flow for franchise mode with Cluster-based optimization."""
-    logger.info(f"Processing FRANCHISE ({len(all_partners)} partners) with Clustering")
+def run_franchise_mode(
+    df: pd.DataFrame,
+    all_partners: np.ndarray,
+    output_dir: Path = OUTPUT_DIR,
+    optimization_scope: str = "global",
+):
+    """Execution flow for franchise mode with global or clustered optimization."""
+    logger.info(
+        f"Processing FRANCHISE ({len(all_partners)} partners) with {optimization_scope.upper()} optimization"
+    )
 
     if df.empty or len(all_partners) == 0:
         raise ValueError(
             "No rows were returned for franchise mode. Check BigQuery filters (franchise/grade/entity_id/date range/country_id)."
         )
 
-    # Step 1: Cluster partners based on volume and baseline AWT
-    partner_stats = []
-    for pid in all_partners:
-        df_p = df[df["partner_id"] == pid]
-        partner_stats.append({
-            "partner_id": pid,
-            "avg_orders": df_p["ordenes_pendientes"].mean(),
-            "avg_awt": df_p["max_awt_espera_min"].mean(),
-            "count": len(df_p)
-        })
-    df_stats = pd.DataFrame(partner_stats)
+    cluster_specs = []
+    if optimization_scope == "global":
+        cluster_specs = [("Global", all_partners, df.copy())]
+    else:
+        partner_stats = []
+        for pid in all_partners:
+            df_p = df[df["partner_id"] == pid]
+            partner_stats.append({
+                "partner_id": pid,
+                "avg_orders": df_p["ordenes_pendientes"].mean(),
+                "avg_awt": df_p["max_awt_espera_min"].mean(),
+                "count": len(df_p)
+            })
+        df_stats = pd.DataFrame(partner_stats)
 
-    # Simple clustering: High Volume vs Low Volume
-    if df_stats.empty:
-        raise ValueError("No partner statistics available to build clusters. Input dataset is empty after filters.")
+        if df_stats.empty:
+            raise ValueError("No partner statistics available to build clusters. Input dataset is empty after filters.")
 
-    median_orders = df_stats["avg_orders"].median()
-    df_stats["cluster"] = np.where(df_stats["avg_orders"] >= median_orders, "HighVolume", "LowVolume")
+        median_orders = df_stats["avg_orders"].median()
+        df_stats["cluster"] = np.where(df_stats["avg_orders"] >= median_orders, "HighVolume", "LowVolume")
 
-    clusters = df_stats["cluster"].unique()
+        clusters = df_stats["cluster"].unique()
+        cluster_list = list(clusters) + ["Global"]
+        for cluster_name in cluster_list:
+            if cluster_name == "Global":
+                cluster_partners = all_partners
+                df_cluster = df.copy()
+            else:
+                cluster_partners = df_stats[df_stats["cluster"] == cluster_name]["partner_id"].values
+                df_cluster = df[df["partner_id"].isin(cluster_partners)].copy()
+            cluster_specs.append((cluster_name, cluster_partners, df_cluster))
+
+    simulation_budget = N_SIMULATIONS if optimization_scope == "global" else max(1, N_SIMULATIONS // 2)
+    optimization_budget = N_OPTIMIZATION_CALLS if optimization_scope == "global" else max(1, N_OPTIMIZATION_CALLS // 2)
+
     all_cluster_results = []
 
-    # Optional: Add a virtual "Global" cluster to include all partners
-    cluster_list = list(clusters) + ["Global"]
-
-    for cluster_name in cluster_list:
-        if cluster_name == "Global":
-            cluster_partners = all_partners
-            df_cluster = df.copy()
-        else:
-            cluster_partners = df_stats[df_stats["cluster"] == cluster_name]["partner_id"].values
-            df_cluster = df[df["partner_id"].isin(cluster_partners)].copy()
+    for cluster_name, cluster_partners, df_cluster in cluster_specs:
 
         logger.info(f"Optimizing Cluster: {cluster_name} ({len(cluster_partners)} partners)")
 
@@ -192,7 +205,7 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: P
             })
 
         simulator = HDMSimulator(awt_predictor, ept_predictor, baseline_metrics)
-        mc_df = simulator.run_simulations(df_cluster, THRESHOLDS, n_sims=N_SIMULATIONS // 2)
+        mc_df = simulator.run_simulations(df_cluster, THRESHOLDS, n_sims=simulation_budget)
         mc_df["objective_score"] = (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"]) - (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
 
         top_k = BAYESIAN_SETTINGS.get("mc_seed_top_k", 20)
@@ -203,7 +216,7 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: P
 
         optimizer, opt_result = optimize_hdm_thresholds(
             df_cluster, awt_predictor, ept_predictor, baseline_metrics,
-            n_calls=N_OPTIMIZATION_CALLS // 2, method="gp_minimize",
+            n_calls=optimization_budget, method="gp_minimize",
             franchise_payloads=partner_payloads, x0=bayes_x0
         )
 
@@ -255,6 +268,8 @@ def main():
                         help="Country ID (default: 2 for Chile)")
     parser.add_argument("--entity-id", type=str, default="PY_CL",
                         help="Entity ID (default: PY_CL for Chile)")
+    parser.add_argument("--optimization-scope", choices=["global", "clustered"], default="global",
+                        help="Optimization scope for franchise mode (default: global)")
     
     # OPTIONAL PARAMETERS (for advanced usage)
     parser.add_argument("--partner-id", type=int, default=None,
@@ -268,7 +283,8 @@ def main():
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
     logger.info(
         f"Execution settings: N_SIMULATIONS={N_SIMULATIONS}, "
-        f"N_OPTIMIZATION_CALLS={N_OPTIMIZATION_CALLS}"
+        f"N_OPTIMIZATION_CALLS={N_OPTIMIZATION_CALLS}, "
+        f"OPTIMIZATION_SCOPE={args.optimization_scope}"
     )
 
     partner_ids_filter = [int(pid.strip()) for pid in args.partner_ids.split(",")] if args.partner_ids else []
@@ -329,7 +345,12 @@ def main():
         _save_partner_outputs(result, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
     else:
-        cluster_results = run_franchise_mode(df, all_partners, run_output_dir)
+        cluster_results = run_franchise_mode(
+            df,
+            all_partners,
+            run_output_dir,
+            optimization_scope=args.optimization_scope,
+        )
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
         _log_franchise_optimal_summary(cluster_results, run_output_dir)

@@ -195,10 +195,18 @@ score = (awt_weight × reducción_awt) - (ept_penalty × aumento_ept) - penaliza
 ## 🚀 Uso
 
 ### Modo Franchise (Recomendado)
-Optimiza una configuración **única** para todos los partners, ponderada por volumen de órdenes:
+Optimiza una configuración **única** para toda la franquicia. Este es ahora el comportamiento por defecto y el recomendado cuando el objetivo es una política general con buen balance entre precisión y tiempo de ejecución.
 
 ```bash
 python main.py --mode franchise
+```
+
+Por defecto corre en alcance `global`, es decir, usa todos los partners de la franquicia juntos para encontrar una sola configuración óptima.
+
+Si alguna vez necesitas volver al esquema anterior por clusters de volumen, puedes usar:
+
+```bash
+python main.py --mode franchise --optimization-scope clustered
 ```
 
 ### Modo BigQuery con Query Real
@@ -234,6 +242,8 @@ Perfiles:
 - `run.sh`: `N_SIMULATIONS=10`, `N_OPTIMIZATION_CALLS=5`
 - `run_realistic.sh`: `N_SIMULATIONS=200`, `N_OPTIMIZATION_CALLS=20`
 - `run_prod.sh`: `N_SIMULATIONS=2000`, `N_OPTIMIZATION_CALLS=80`
+
+Todos estos runners usan `optimization-scope=global` por defecto.
 
 Recomendación de ventana histórica:
 - Smoke: 7 días
