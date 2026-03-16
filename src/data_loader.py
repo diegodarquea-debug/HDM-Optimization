@@ -121,8 +121,9 @@ def load_bigquery_data(query: Optional[str] = None,
         if "@end_date" in query and end_date is not None:
             ed = pd.Timestamp(end_date).date()
             query_params.append(bigquery.ScalarQueryParameter("end_date", "DATE", ed))
-        if "@partner_ids" in query and partner_ids is not None:
-            pids = [int(pid) for pid in partner_ids if pid]
+        if "@partner_ids" in query:
+            # Always pass partner_ids, even if empty (required for SQL logic)
+            pids = [int(pid) for pid in (partner_ids or []) if pid]
             query_params.append(bigquery.ArrayQueryParameter("partner_ids", "INT64", pids))
 
     for param_name, param_value in (query_parameters or {}).items():
