@@ -7,9 +7,29 @@ import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List, Union, Any
 import pandas as pd
-from .config import RAW_DATA_PATH, GCP_PROJECT_ID, BQ_DATASET, BQ_TABLE, BQ_LOCATION, BQ_TIMEOUT_SECONDS
+from .config import (
+    RAW_DATA_PATH,
+    GCP_PROJECT_ID,
+    BQ_DATASET,
+    BQ_TABLE,
+    BQ_LOCATION,
+    BQ_TIMEOUT_SECONDS,
+    DATA_SOURCE,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_data_source(data_source: Optional[str]) -> str:
+    source = (data_source or DATA_SOURCE or "csv").lower()
+    if source not in {"auto", "csv", "bigquery"}:
+        raise ValueError(f"Invalid data source: {source}. Use auto, csv, or bigquery.")
+
+    if source == "auto":
+        has_bq_config = bool(GCP_PROJECT_ID and BQ_DATASET and BQ_TABLE)
+        return "bigquery" if has_bq_config else "csv"
+
+    return source
 
 def load_bigquery_data(query: Optional[str] = None,
                        start_date: Optional[pd.Timestamp] = None,
@@ -64,8 +84,10 @@ def load_bigquery_data(query: Optional[str] = None,
     
     job_config = bigquery.QueryJobConfig(query_parameters=query_params) if query_params else None
     logger.info(f"Executing BigQuery query with {len(query_params)} parameters...")
-    
-    df = client.query(query, job_config=job_config).to_dataframe()
+
+    query_job = client.query(query, job_config=job_config, location=BQ_LOCATION)
+    query_job.result(timeout=BQ_TIMEOUT_SECONDS)
+    df = query_job.to_dataframe(create_bqstorage_client=False)
     
     if "momento_exacto" in df.columns:
         df["momento_exacto"] = pd.to_datetime(df["momento_exacto"])
@@ -156,10 +178,23 @@ def load_and_prepare_data(filepath: Optional[str] = None,
                           start_date: Optional[pd.Timestamp] = None,
                           end_date: Optional[pd.Timestamp] = None,
                           mode: str = "partner",
-                          source: str = "csv") -> pd.DataFrame:
+                          source: Optional[str] = None,
+                          bigquery_query: Optional[str] = None,
+                          partner_ids: Optional[List[Any]] = None) -> pd.DataFrame:
     """Complete pipeline: load → preprocess → filter."""
-    if source == "bigquery":
-        df = load_bigquery_data()
+    resolved_source = _resolve_data_source(source)
+
+    if resolved_source == "bigquery":
+        resolved_partner_ids = list(partner_ids or [])
+        if mode == "partner" and partner_id is not None and partner_id not in resolved_partner_ids:
+            resolved_partner_ids.append(partner_id)
+
+        df = load_bigquery_data(
+            query=bigquery_query,
+            start_date=start_date,
+            end_date=end_date,
+            partner_ids=resolved_partner_ids,
+        )
     else:
         df = load_csv_data(filepath)
 

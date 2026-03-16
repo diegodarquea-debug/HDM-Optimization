@@ -20,6 +20,8 @@ from src.config import (
     RANDOM_SEED,
     MAX_EPT_INCREASE,
     BAYESIAN_SETTINGS,
+    DATA_SOURCE,
+    configure_logging,
 )
 from src.data_loader import load_and_prepare_data, get_unique_partners, get_date_range
 from src.analytics import analyze_data, calculate_baseline_metrics
@@ -79,7 +81,7 @@ def process_partner(df_partner: pd.DataFrame, partner_id: Any, partner_name: str
         "end_date": end_date,
     }
 
-def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray):
+def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray, output_dir: Path = OUTPUT_DIR):
     """Execution flow for franchise mode with Cluster-based optimization."""
     logger.info(f"Processing FRANCHISE ({len(all_partners)} partners) with Clustering")
 
@@ -162,27 +164,67 @@ def run_franchise_mode(df: pd.DataFrame, all_partners: np.ndarray):
             "optimizer": optimizer
         })
 
-    _save_clustered_outputs(all_cluster_results, OUTPUT_DIR)
+    _save_clustered_outputs(all_cluster_results, output_dir)
     return all_cluster_results
 
 def main():
+    configure_logging()
+
     parser = argparse.ArgumentParser(description="HDM Optimization Pipeline")
     parser.add_argument("--mode", choices=["partner", "franchise"], default="franchise")
     parser.add_argument("--partner-id", type=int, default=None)
+    parser.add_argument("--partner-ids", type=str, default=None,
+                        help="Comma-separated partner IDs for franchise subset (e.g. 101,102,103)")
+    parser.add_argument("--data-source", choices=["auto", "csv", "bigquery"], default=DATA_SOURCE)
+    parser.add_argument("--data-file", type=str, default=None,
+                        help="CSV input path override (used when data-source=csv)")
+    parser.add_argument("--start-date", type=str, default=None, help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end-date", type=str, default=None, help="End date (YYYY-MM-DD)")
+    parser.add_argument("--bq-query-file", type=str, default=None,
+                        help="Path to SQL file with @start_date, @end_date and @partner_ids parameters")
     args = parser.parse_args()
-    
+
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
-    
-    df = load_and_prepare_data(mode=args.mode)
+
+    start_date = pd.to_datetime(args.start_date) if args.start_date else None
+    end_date = pd.to_datetime(args.end_date) if args.end_date else None
+    partner_ids_filter = [int(pid.strip()) for pid in args.partner_ids.split(",")] if args.partner_ids else []
+
+    bq_query = None
+    if args.bq_query_file:
+        bq_query_path = Path(args.bq_query_file)
+        if not bq_query_path.exists():
+            raise FileNotFoundError(f"BigQuery query file not found: {bq_query_path}")
+        bq_query = bq_query_path.read_text(encoding="utf-8")
+
+    df = load_and_prepare_data(
+        filepath=args.data_file,
+        partner_id=args.partner_id,
+        start_date=start_date,
+        end_date=end_date,
+        mode=args.mode,
+        source=args.data_source,
+        bigquery_query=bq_query,
+        partner_ids=partner_ids_filter,
+    )
+
+    if args.mode == "franchise" and partner_ids_filter:
+        df = df[df["partner_id"].isin(partner_ids_filter)].copy()
+        if df.empty:
+            raise ValueError("No data left after applying --partner-ids filter.")
+
     all_partners = get_unique_partners(df)
+    run_output_dir = _get_versioned_output_dir(OUTPUT_DIR)
     
     if args.mode == "partner":
         partner_id = args.partner_id or all_partners[0]
         df_p = df[df["partner_id"] == partner_id].copy()
         result = process_partner(df_p, partner_id, df_p["partner_name"].iloc[0] if "partner_name" in df_p.columns else None)
+        _save_partner_outputs(result, run_output_dir)
         _save_partner_outputs(result, OUTPUT_DIR)
     else:
-        run_franchise_mode(df, all_partners)
+        cluster_results = run_franchise_mode(df, all_partners, run_output_dir)
+        _save_clustered_outputs(cluster_results, OUTPUT_DIR)
 
 def _save_partner_outputs(result, output_dir):
     """Save single-partner outputs (legacy format)."""
