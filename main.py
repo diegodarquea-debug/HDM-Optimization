@@ -327,18 +327,30 @@ def main():
         result = process_partner(df_p, partner_id, df_p["partner_name"].iloc[0] if "partner_name" in df_p.columns else None)
         _save_partner_outputs(result, run_output_dir)
         _save_partner_outputs(result, OUTPUT_DIR)
+        _write_latest_run_pointer(run_output_dir)
     else:
         cluster_results = run_franchise_mode(df, all_partners, run_output_dir)
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
+        _write_latest_run_pointer(run_output_dir)
+
+
+def _write_latest_run_pointer(run_output_dir: Path):
+    """Persist a pointer to the latest run folder for quick discovery."""
+    pointer_path = OUTPUT_DIR / "latest_run_path.txt"
+    pointer_path.write_text(str(run_output_dir), encoding="utf-8")
+    logger.info(f"Latest run pointer updated: {pointer_path}")
+    logger.info(f"Latest run directory: {run_output_dir}")
+
 
 def _save_partner_outputs(result, output_dir):
     """Save single-partner outputs (legacy format)."""
     optimizer = result["optimizer"]
     best_config = result["best_config"]
-    baseline_metrics = result["baseline_metrics"]
-    
-    pd.DataFrame(optimizer.optimization_history).to_csv(output_dir / "optimization_history.csv", index=False)
-    
+
+    history_path = output_dir / "optimization_history.csv"
+    pd.DataFrame(optimizer.optimization_history).to_csv(history_path, index=False)
+    logger.info(f"Saved optimization history: {history_path}")
+
     rec = {
         "partner_id": result["partner_id"],
         "u1": best_config.get("u1"),
@@ -349,12 +361,23 @@ def _save_partner_outputs(result, output_dir):
         "awt_reduction": best_config.get("awt_improvement"),
         "ept_increase": best_config.get("ept_increase"),
     }
-    pd.DataFrame([rec]).to_csv(output_dir / "hdm_recommendations.csv", index=False)
-    
+    recommendations_path = output_dir / "hdm_recommendations.csv"
+    pd.DataFrame([rec]).to_csv(recommendations_path, index=False)
+    logger.info(f"Saved partner recommendations: {recommendations_path}")
+
     try:
-        result["simulator"].generate_stress_day_analysis(result["data"], best_config["u1"], best_config["u2"], best_config["u3"], best_config["delta_ept"], best_config["duracion_hdm"], output_dir)
+        result["simulator"].generate_stress_day_analysis(
+            result["data"],
+            best_config["u1"],
+            best_config["u2"],
+            best_config["u3"],
+            best_config["delta_ept"],
+            best_config["duracion_hdm"],
+            output_dir,
+        )
     except Exception as e:
         logger.warning(f"Validation failed: {e}")
+
 
 def _save_clustered_outputs(all_cluster_results, output_dir):
     """Save clustered franchise outputs."""
@@ -378,9 +401,17 @@ def _save_clustered_outputs(all_cluster_results, output_dir):
         p_res["cluster"] = cluster_name
         all_partner_results.append(p_res)
 
-    pd.concat(all_history).to_csv(output_dir / "optimization_history.csv", index=False)
-    pd.DataFrame(all_configs).to_csv(output_dir / "franchise_optimal_config.csv", index=False)
-    pd.concat(all_partner_results).to_csv(output_dir / "franchise_impact_by_partner.csv", index=False)
+    history_path = output_dir / "optimization_history.csv"
+    config_path = output_dir / "franchise_optimal_config.csv"
+    partner_impact_path = output_dir / "franchise_impact_by_partner.csv"
+
+    pd.concat(all_history).to_csv(history_path, index=False)
+    pd.DataFrame(all_configs).to_csv(config_path, index=False)
+    pd.concat(all_partner_results).to_csv(partner_impact_path, index=False)
+
+    logger.info(f"Saved optimization history: {history_path}")
+    logger.info(f"Saved franchise optimal config: {config_path}")
+    logger.info(f"Saved franchise impact by partner: {partner_impact_path}")
 
     logger.info(f"Clustered optimization complete. Clusters saved to {output_dir}")
 
