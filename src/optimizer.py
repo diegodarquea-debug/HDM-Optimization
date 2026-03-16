@@ -108,7 +108,9 @@ class HDMOptimizer:
     def optimize(self, n_calls: Optional[int] = None, method: str = "gp_minimize",
                  random_state: int = 42, x0: Optional[List[List[Any]]] = None) -> Any:
         """Run Bayesian optimization."""
-        n_calls = n_calls or N_OPTIMIZATION_CALLS
+        n_calls = int(n_calls or N_OPTIMIZATION_CALLS)
+        if n_calls < 1:
+            n_calls = 1
         logger.info(f"Starting Bayesian optimization ({method}) with {n_calls} calls...")
         
         space = [
@@ -123,14 +125,36 @@ class HDMOptimizer:
         def callback(res): pbar.update(1)
         
         warnings.filterwarnings("ignore", message="The objective has been evaluated at point.*")
+
+        # Normalize warm-starts for low-budget smoke tests.
+        # skopt requires: n_calls >= len(x0) + n_initial_points
+        x0_clean: List[List[Any]] = []
+        for row in (x0 or []):
+            if isinstance(row, (list, tuple)) and len(row) == 5:
+                x0_clean.append(list(row))
+
+        if x0_clean:
+            max_x0_allowed = max(0, n_calls - 1)
+            if len(x0_clean) > max_x0_allowed:
+                logger.info(
+                    "Truncating x0 warm-starts from %d to %d due to low n_calls=%d",
+                    len(x0_clean),
+                    max_x0_allowed,
+                    n_calls,
+                )
+                x0_clean = x0_clean[:max_x0_allowed]
+
+        default_initial = int(BAYESIAN_SETTINGS.get("n_initial_points", 5))
+        remaining_budget = max(1, n_calls - len(x0_clean))
+        n_initial_points = min(default_initial, remaining_budget)
         
         opt_args = {
             "func": self.objective_function,
             "dimensions": space,
             "n_calls": n_calls,
             "random_state": random_state,
-            "n_initial_points": BAYESIAN_SETTINGS["n_initial_points"],
-            "x0": x0,
+            "n_initial_points": n_initial_points,
+            "x0": x0_clean if x0_clean else None,
             "callback": callback,
             "verbose": False
         }
