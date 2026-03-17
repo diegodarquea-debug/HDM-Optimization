@@ -1,315 +1,445 @@
 # Documentation
 
-## 1) Que hace este proyecto
+Documento para leer en reunion, paso a paso, con foco en:
 
-Este proyecto optimiza la activacion de HDM a nivel franquicias.
+- Que entra al modelo
+- Que se calcula en cada etapa
+- Que parametros afectan cada decision
+- Como interpretar el resultado final
 
-Objetivo operativo:
+---
 
-- Bajar AWT (tiempo de espera real del cliente)
+## 0) Resumen en 30 segundos
+
+El proyecto busca la mejor configuracion de HDM para una franquicia.
+
+Que optimiza:
+
+- Mejorar AWT (espera real del cliente)
 - Controlar EPT (tiempo prometido)
-- Evitar recomendaciones poco utiles (HDM casi nunca activo) o excesivas (HDM casi siempre activo)
+- Evitar soluciones inutiles (HDM casi nunca activo) o excesivas (HDM casi siempre activo)
 
-El pipeline devuelve una configuracion optima con 5 parametros:
+Salida final del pipeline:
 
 - u1
 - u2
 - u3
 - delta_ept
 - duracion_hdm
+- metricas de impacto (awt_improvement, ept_increase, hdm_activation_rate)
 
 ---
 
-## 2) Data de entrada: que viene y que significa
+## 1) Data de entrada
 
-### Columnas requeridas (si faltan, el pipeline falla)
+### 1.1 Que data entra
 
-| Columna | Tipo esperado | Uso |
-|---|---|---|
-| momento_exacto | datetime | Orden temporal de la simulacion minuto a minuto |
-| partner_id | int/string | Segmentacion por partner/franquicia |
-| ordenes_pendientes | numerico | Condicion u1 y feature de modelos |
-| riders_cerca | numerico | Condicion u2 y feature de modelos |
-| hdm_activo | 0/1 | Feature historica para entrenamiento |
-| max_awt_espera_min | numerico | Condicion u3 y baseline principal de AWT |
+Columnas obligatorias:
 
-### Columnas opcionales (mejoran estimacion)
-
-| Columna | Uso |
+| Columna | Para que se usa |
 |---|---|
-| ept_promedio_min | Base de EPT para simulacion |
-| ept_promedio_min_smoothed | EPT suavizado para entrenamiento y baseline |
-| ept_promedio | Fallback de EPT si no hay smoothed/min |
-| ept_configurado_min | Ultimo fallback de EPT |
-| awt_promedio | Target alternativo de AWT si esta disponible |
-| partner_name | Etiqueta para reporte por partner |
+| momento_exacto | Orden temporal para simular minuto a minuto |
+| partner_id | Separar datos por partner/franquicia |
+| ordenes_pendientes | Condicion u1 y feature de modelos |
+| riders_cerca | Condicion u2 y feature de modelos |
+| hdm_activo | Estado historico HDM para entrenamiento |
+| max_awt_espera_min | Condicion u3 y baseline principal de AWT |
+
+Columnas opcionales (mejoran precision):
+
+| Columna | Para que se usa |
+|---|---|
+| ept_promedio_min / smoothed / ept_promedio | Baseline de EPT, feature y simulacion de EPT |
+| ept_configurado_min | Fallback de EPT |
+| awt_promedio | Target alternativo de AWT |
+| partner_name | Etiqueta en reportes |
+
+### 1.2 Que pasa si falta data
+
+- Si falta una columna obligatoria: el pipeline falla con error explicito.
+- Si faltan columnas EPT opcionales: usa fallback, pero con menor fidelidad.
 
 ---
 
-## 3) Etapas del pipeline (de punta a punta)
-
-## Etapa A: Ingestion de datos
+## 2) Etapa A - Ingestion
 
 Archivo principal: src/data_loader.py
 
-1. Decide origen de datos:
-- auto: BigQuery si hay configuracion completa, si no CSV
-- csv: lee data/raw_data.csv (o ruta enviada)
-- bigquery: ejecuta SQL (por archivo o query default)
+### Que entra
 
-2. Si es BigQuery:
-- inyecta parametros tipados (DATE, INT64, STRING, ARRAY)
-- ejecuta query con timeout y location configurables
+- Fuente de datos: auto/csv/bigquery
+- Parametros de fecha, franquicia, grade, etc.
 
-3. Aplica filtros por modo:
-- franchise: filtra por rango de fechas
-- partner: filtra por partner_id y fechas
+### Que se hace
 
-Impacto de parametros en esta etapa:
+1. Decide origen:
+- auto -> BigQuery si hay config completa; si no, CSV
+- csv -> lee archivo local
+- bigquery -> ejecuta SQL parametrizado
 
-- DATA_SOURCE define origen (auto/csv/bigquery)
-- BQ_TIMEOUT_SECONDS puede cortar query lenta
-- BQ_DEFAULT_LOOKBACK_DAYS aplica solo en query default sin archivo SQL
+2. En BigQuery:
+- tipa parametros (DATE, INT64, STRING, ARRAY)
+- ejecuta query con timeout y location
+
+3. Filtra por modo:
+- franchise -> por ventana de fechas
+- partner -> por partner + fechas
+
+### Que sale
+
+- DataFrame limpio para preprocesar
+
+### Parametros que mandan
+
+- DATA_SOURCE
+- BQ_TIMEOUT_SECONDS
+- BQ_LOCATION
+- BQ_DEFAULT_LOOKBACK_DAYS (solo query default)
+
+### Como explicarlo en reunion
+
+"Primero garantizamos que estamos leyendo exactamente el universo correcto de datos y fechas antes de modelar cualquier cosa."
 
 ---
 
-## Etapa B: Preprocesamiento
+## 3) Etapa B - Preprocesamiento
 
 Archivo principal: src/data_loader.py -> preprocess_data
 
-1. Valida columnas requeridas.
-2. Completa nulos:
-- ordenes_pendientes, riders_cerca, max_awt_espera_min -> 0
-- hdm_activo -> 0 y cast a int
-3. Fuerza tipos numericos en columnas EPT/AWT opcionales.
-4. Logica EPT:
-- si existe ept_promedio_min, pone EPT=0 cuando ordenes=0
-- recorta outliers a p99 en filas activas
-- crea ept_promedio_min_smoothed con rolling window=5
-- setea ept_promedio = ept_promedio_min_smoothed
-5. Ordena por momento_exacto.
+### Que entra
 
-Impacto:
+- DataFrame crudo de ingesta
 
-- Este paso evita ruido extremo de EPT y estabiliza entrenamiento/simulacion.
+### Que se hace
+
+1. Validacion de columnas requeridas.
+2. Limpieza de nulos:
+- ordenes/riders/awt -> 0
+- hdm_activo -> 0 o 1
+3. Cast de columnas numericas relevantes.
+4. Tratamiento EPT:
+- EPT=0 cuando ordenes=0
+- recorte de outliers a p99 en filas activas
+- suavizado rolling (window=5)
+5. Orden temporal por momento_exacto.
+
+### Que sale
+
+- DataFrame consistente, ordenado y menos ruidoso
+
+### Parametros que mandan
+
+- Logica de preproceso definida en codigo (no expuesta como flags)
+
+### Como explicarlo en reunion
+
+"Antes de entrenar, reducimos ruido y estandarizamos la data para que el modelo no aprenda patrones falsos por outliers o nulos."
 
 ---
 
-## Etapa C: Baseline (sin intervencion)
+## 4) Etapa C - Baseline
 
 Archivo principal: src/analytics.py
 
-Calcula metricas base de negocio:
+### Que entra
+
+- DataFrame preprocesado
+
+### Que se hace
+
+Calcula el punto de partida sin intervencion:
 
 - AWT promedio, p50, p95
-- Ordenes y riders promedio, p50, p95
-- Tasa historica de hdm_activo
-- EPT promedio/p95 para columnas disponibles
+- EPT promedio/p95 (si existe)
+- ordenes/riders descriptivos
+- tasa historica de HDM
 
-Estas metricas son la referencia para:
+### Que sale
+
+- baseline_metrics
+
+### Por que es critico
+
+Todas las mejoras se miden contra este baseline:
 
 - awt_improvement = awt_baseline - awt_simulado
 - ept_increase = ept_simulado - ept_baseline
 
+### Como explicarlo en reunion
+
+"Si no definimos bien el baseline, no podemos afirmar que una recomendacion mejora o empeora."
+
 ---
 
-## Etapa D: Entrenamiento de modelos
+## 5) Etapa D - Entrenamiento de modelos
 
 Archivo principal: src/model.py
+
+### Que entra
+
+- DataFrame preprocesado
+- Config de modelo desde src/config.py
+
+### Que se hace
 
 Se entrenan dos modelos:
 
 1. AWTPredictor
-- Features base: [ordenes_pendientes, riders_cerca, hdm_activo]
-- Agrega feature EPT si existe una de estas columnas (prioridad):
-  ept_promedio_min_smoothed -> ept_promedio_min -> ept_promedio
-- Target:
-  - awt_promedio si existe y tiene media > 0
-  - si no, max_awt_espera_min
+- Features: ordenes_pendientes, riders_cerca, hdm_activo (+ EPT si existe)
+- Target: awt_promedio o max_awt_espera_min
 
 2. EPTPredictor
-- Features: [ordenes_pendientes, riders_cerca, hdm_activo]
-- Target EPT con prioridad:
-  ept_promedio_min_smoothed -> ept_promedio_min -> ept_promedio -> ept_configurado_min
-- Si no hay columnas EPT validas, usa baseline heuristico
+- Features: ordenes_pendientes, riders_cerca, hdm_activo
+- Target EPT segun prioridad de columnas disponibles
 
-Configuracion clave:
+### Que sale
 
-- MODEL_TYPE: linear_regression | random_forest | decision_tree
-- TRAIN_TEST_SPLIT: proporcion train/test
-- MODEL_SETTINGS: hiperparametros RF/DT
+- awt_predictor entrenado
+- ept_predictor entrenado
+- metricas de entrenamiento/test
+
+### Parametros que mandan
+
+- MODEL_TYPE: random_forest, linear_regression, decision_tree
+- TRAIN_TEST_SPLIT
+- MODEL_SETTINGS (n_estimators, max_depth, etc.)
+
+### Como explicarlo en reunion
+
+"Los modelos aprenden como cambian AWT y EPT segun carga, riders y estado HDM. Eso permite simular escenarios que no vimos exactamente en el historico."
 
 ---
 
-## Etapa E: Simulacion de una configuracion HDM
+## 6) Etapa E - Simulacion de escenarios HDM
 
 Archivo principal: src/simulator.py
 
-Para una configuracion (u1, u2, u3, delta_ept, duracion_hdm):
+### Que entra
 
-1. Trigger estricto AND:
-- activa si ordenes >= u1 AND riders >= u2 AND max_awt >= u3
+- Modelos entrenados
+- baseline_metrics
+- Una configuracion candidata: u1, u2, u3, delta_ept, duracion_hdm
+
+### Que se hace
+
+1. Regla de activacion (AND estricto):
+- activa solo si ordenes >= u1 y riders >= u2 y awt >= u3
 
 2. Delay operativo:
-- al trigger entra en cola
-- aplica efecto recien luego de ACTIVATION_DELAY_MINUTES
+- hay cola de activacion
+- efecto real aplica despues de ACTIVATION_DELAY_MINUTES
 
-3. Duracion:
-- una vez activo dura duracion_hdm
-- si vuelve a triggerear estando activo, extiende fin
+3. Duracion de estado:
+- una activacion dura duracion_hdm
+- nuevos triggers extienden la duracion
 
-4. EPT simulado:
-- cuando HDM esta activo: ept_with_hdm = ept_base + delta_ept
-- cuando no esta activo: ept_with_hdm = ept_base
+4. Simulacion EPT:
+- HDM activo -> ept_base + delta_ept
+- HDM inactivo -> ept_base
 
-5. AWT simulado:
-- predice AWT con modelo usando hdm_active_sim y ept_with_hdm
-- aplica ajuste de calibracion cuando HDM esta activo:
+5. Simulacion AWT:
+- predice con modelo
+- aplica calibracion por delta_ept:
   hdm_factor = max(1 - awt_delta_ept_max_reduction,
                    1 - awt_delta_ept_reduction_per_min * delta_ept)
-  awt_ajustado = awt_predicho * hdm_factor
 
-6. Metricas de salida:
+### Que sale
+
+Metricas por configuracion:
+
 - awt_improvement
 - ept_increase
 - combined_improvement
 - hdm_activation_rate
-- awt_p50 / awt_p95
+- awt_p50, awt_p95
 
-Impacto de umbrales aqui:
+### Parametros que mandan
 
-- u1/u2/u3 controlan frecuencia de activacion
-- delta_ept controla intensidad EPT y factor de reduccion AWT
-- duracion_hdm controla permanencia de efecto
+- THRESHOLDS (u1,u2,u3,delta_ept,duracion_hdm)
+- ACTIVATION_DELAY_MINUTES
+- HDM_EFFECT_SETTINGS
+
+### Como explicarlo en reunion
+
+"Esta etapa responde: si aplicabamos esta politica de HDM sobre la historia real, cual habria sido el impacto en espera y EPT."
 
 ---
 
-## Etapa F: Monte Carlo (exploracion)
+## 7) Etapa F - Monte Carlo (exploracion amplia)
 
 Archivos: src/simulator.py + main.py
 
-1. Genera N_SIMULATIONS configuraciones aleatorias dentro de THRESHOLDS.
-2. Evalua cada configuracion con simulador.
-3. En main.py calcula objective_score para rankear seeds con la misma logica del optimizador:
+### Que entra
 
-- weighted_gain = awt_weight * awt_improvement - ept_penalty * ept_increase - rate_penalty
-- soft_penalty incluye:
-  - awt_worse_quad si awt_improvement < 0
-  - combined_worse_quad si combined_improvement < 0
-  - ept_excess_quad si ept_increase > MAX_EPT_INCREASE
+- Espacio THRESHOLDS
+- N_SIMULATIONS
+
+### Que se hace
+
+1. Genera N_SIMULATIONS configuraciones aleatorias.
+2. Simula cada una.
+3. Calcula objective_score para rankear seeds de forma consistente con el optimizador:
+
+- weighted_gain = awt*w_awt - ept*w_ept - rate_penalty
 - objective_score = weighted_gain - soft_penalty
 
-4. Toma top_k (BAYESIAN_SETTINGS.mc_seed_top_k) para warm-start de Bayesian.
+4. Toma top_k para warm-start de Bayesian.
 
-Impacto de parametros:
+### Que sale
 
-- N_SIMULATIONS mayor = mas cobertura del espacio
-- top_k mayor = mas diversidad inicial para Bayesian
+- monte_carlo_franchise_exploration.csv
+- Lista de seeds x0 para optimizacion
+
+### Parametros que mandan
+
+- N_SIMULATIONS
+- BAYESIAN_SETTINGS.mc_seed_top_k
+- OBJECTIVE_WEIGHTS
+- OPTIMIZER_PENALTIES
+
+### Como explicarlo en reunion
+
+"Monte Carlo barre el mapa completo para no arrancar la optimizacion en una zona ciega."
 
 ---
 
-## Etapa G: Optimizacion Bayesiana (refinamiento)
+## 8) Etapa G - Optimizacion Bayesiana (refinamiento)
 
-Archivo: src/optimizer.py
+Archivo principal: src/optimizer.py
 
-1. Define espacio de busqueda con THRESHOLDS.
-2. Ejecuta gp_minimize o forest_minimize por N_OPTIMIZATION_CALLS.
-3. En cada evaluacion usa objective_function:
+### Que entra
 
-- weighted_gain = awt_weight * awt_improvement - ept_penalty * ept_increase - rate_penalty
+- Seeds del Monte Carlo
+- Espacio THRESHOLDS
+- N_OPTIMIZATION_CALLS
 
-rate_penalty tiene dos lados:
+### Que se hace
 
-- Penaliza activacion demasiado baja:
-  si hdm_rate < hdm_rate_min_threshold
-- Penaliza sobreactivacion:
-  si hdm_rate > hdm_rate_threshold
+1. Evalua configuraciones con objective_function.
+2. Minimiza total_loss:
 
-penalty_terms adicionales:
-
-- awt_worse_quad si awt_improvement < 0
-- combined_worse_quad si combined_improvement < 0
-- ept_excess_quad si ept_increase > MAX_EPT_INCREASE
-
-Resultado interno:
-
+- weighted_gain = awt_weight*awt_improvement - ept_penalty*ept_increase - rate_penalty
 - total_loss = -weighted_gain + penalty_terms
-- el optimizador minimiza total_loss
 
----
+3. Penaliza escenarios indeseados:
 
-## Etapa H: Seleccion de estrategias y resultado final
+- awt_improvement < 0
+- combined_improvement < 0
+- ept_increase > MAX_EPT_INCREASE
+- hdm_activation_rate demasiado baja o demasiado alta
 
-Archivo: src/optimizer.py -> get_top_3_strategies
-
-Sobre optimization_history:
-
-- filtra primero por ept_increase <= MAX_EPT_INCREASE (si hay candidatos)
-
-Estrategias:
-
-1. Agresiva
-- max awt_improvement
-
-2. Equilibrada (principal)
-- max objective_score (misma logica del objetivo)
-
-3. Conservadora
-- entre candidatos con mejora minima de AWT, elige menor hdm_activation_rate
-
-Luego main.py guarda:
+### Que sale
 
 - optimization_history.csv
+- best_config segun objective_score/total_loss
+
+### Parametros que mandan
+
+- OBJECTIVE_WEIGHTS
+- OPTIMIZER_PENALTIES
+- MAX_EPT_INCREASE
+- N_OPTIMIZATION_CALLS
+
+### Como explicarlo en reunion
+
+"Bayesian no prueba todo: aprende en que zonas hay mejores candidatos y concentra ahi el presupuesto de evaluacion."
+
+---
+
+## 9) Etapa H - Seleccion de estrategia final y reportes
+
+Archivos: src/optimizer.py + main.py
+
+### Que entra
+
+- optimization_history completo
+
+### Que se hace
+
+1. Filtra candidatos validos por EPT cap.
+2. Construye 3 estrategias:
+
+- Agresiva: max awt_improvement
+- Equilibrada: max objective_score (estrategia principal)
+- Conservadora: menor hdm_activation_rate con piso de mejora AWT
+
+3. Evalua impacto por partner y guarda CSVs.
+
+### Que sale
+
 - franchise_optimal_config.csv
 - franchise_impact_by_partner.csv
+- optimization_history.csv
+
+### Como explicarlo en reunion
+
+"No entregamos un unico numero: entregamos alternativa agresiva, equilibrada y conservadora, y elegimos por defecto la equilibrada por consistencia con el objetivo de negocio."
 
 ---
 
-## 4) Como afectan pesos, umbrales y limites
+## 10) Tabla maestra: impacto de cada parametro
 
-| Parametro | Donde impacta | Efecto directo |
-|---|---|---|
-| u1 | Trigger en simulacion | Subirlo reduce activaciones; bajarlo aumenta activaciones |
-| u2 | Trigger en simulacion | Subirlo exige mas riders; bajarlo activa en escenarios mas escasos |
-| u3 | Trigger en simulacion | Subirlo interviene tarde; bajarlo interviene temprano |
-| delta_ept | EPT simulado y factor AWT | Subirlo aumenta ept_increase y puede mejorar awt_improvement |
-| duracion_hdm | Estado HDM activo | Subirlo prolonga efecto (mas impacto acumulado) |
-| awt (peso) | objective_score | Subirlo prioriza bajar AWT aunque cueste mas EPT |
-| ept_penalty (peso) | objective_score | Subirlo castiga mas aumento de EPT |
-| MAX_EPT_INCREASE | Penalizacion de exceso + filtro estrategias | Limite de seguridad de EPT promedio permitido |
-| hdm_rate_min_threshold | rate_penalty | Obliga activacion minima util |
-| hdm_rate_low_coeff | rate_penalty | Intensidad del castigo por activacion baja |
-| hdm_rate_threshold | rate_penalty | Techo de activacion razonable |
-| hdm_rate_excess_coeff | rate_penalty | Intensidad del castigo por sobreactivacion |
-| awt_delta_ept_reduction_per_min | Ajuste AWT en simulador | Pendiente de mejora de AWT por cada minuto de delta_ept |
-| awt_delta_ept_max_reduction | Ajuste AWT en simulador | Tope maximo de reduccion por calibracion |
-| N_SIMULATIONS | Monte Carlo | Mas exploracion inicial |
-| N_OPTIMIZATION_CALLS | Bayesian | Mas refinamiento local |
+| Parametro | Donde pega | Si sube | Si baja |
+|---|---|---|---|
+| u1 | Trigger HDM | Activa menos (mas conservador) | Activa mas (mas agresivo) |
+| u2 | Trigger HDM | Exige mas riders para activar | Activa con menos riders |
+| u3 | Trigger HDM | Interviene mas tarde | Interviene mas temprano |
+| delta_ept | EPT y ajuste AWT | Mas impacto en AWT, mas costo EPT | Menor impacto y menor costo |
+| duracion_hdm | Estado activo | Efecto dura mas | Efecto dura menos |
+| awt (peso) | Objective score | Prioriza bajar espera real | Pierde prioridad AWT |
+| ept_penalty | Objective score | Castiga mas subir EPT | Permite mas costo EPT |
+| MAX_EPT_INCREASE | Restriccion de seguridad | Endurece candidatos validos | Relaja candidatos validos |
+| hdm_rate_min_threshold | Penalizacion de baja activacion | Exige mas activacion minima | Tolera activacion casi nula |
+| hdm_rate_low_coeff | Fuerza del castigo bajo | Castigo mas fuerte | Castigo mas suave |
+| hdm_rate_threshold | Techo de activacion | Penaliza antes sobreactivar | Permite mas activacion |
+| hdm_rate_excess_coeff | Fuerza del castigo alto | Castigo mas fuerte por sobreactivar | Castigo mas suave |
+| awt_delta_ept_reduction_per_min | Ajuste de simulacion AWT | Hace mas potente delta_ept | Lo hace menos potente |
+| awt_delta_ept_max_reduction | Tope de reduccion AWT | Permite mayor techo de mejora | Limita techo de mejora |
+| N_SIMULATIONS | Monte Carlo | Mas exploracion global | Menos cobertura del espacio |
+| N_OPTIMIZATION_CALLS | Bayesian | Mas refinamiento local | Menos refinamiento |
 
 ---
 
-## 5) Como leer una recomendacion final
+## 11) Como leer un resultado final
 
-Ejemplo de log:
+Ejemplo:
 
 Global optimum | u1=9 | u2=2 | u3=3 | delta_ept=8.0 | duracion_hdm=20 | awt_improvement=0.082 | ept_increase=0.297
 
-Interpretacion:
+Lectura correcta:
 
-- u1/u2/u3: regla de activacion
-- delta_ept/duracion_hdm: intensidad y permanencia de HDM
-- awt_improvement > 0: mejora de espera real
-- ept_increase > 0: costo en promesa de tiempo
-
-En este framework la decision final la manda objective_score, no solo combined_improvement.
+1. Regla operativa: u1/u2/u3 define cuando entra HDM.
+2. Intensidad: delta_ept + duracion_hdm define cuanto y por cuanto tiempo intervenimos.
+3. Beneficio: awt_improvement > 0 mejora espera real.
+4. Costo: ept_increase > 0 sube promesa de tiempo.
+5. Decision final: la manda objective_score, no solo combined_improvement.
 
 ---
 
+## 12) Guion sugerido para presentacion
 
-## 6) Referencias de implementacion
+1. Problema
+- Espera alta en picos, decision HDM historicamente manual
+
+2. Metodo
+- Simulacion de politicas + optimizacion bayesiana
+
+3. Guardrails
+- Tope de EPT
+- Penalizacion por activacion demasiado baja o alta
+
+4. Resultado
+- Configuracion recomendada y metricas de impacto
+
+5. Gobernanza
+- Configuracion centralizada y trazabilidad completa
+
+---
+
+## 13) Referencias de implementacion
 
 - Configuracion: src/config.py
-- Ingestion/preproceso: src/data_loader.py
+- Ingestion y preproceso: src/data_loader.py
 - Baseline: src/analytics.py
 - Modelos: src/model.py
 - Simulador: src/simulator.py
