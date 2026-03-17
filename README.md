@@ -2,6 +2,10 @@
 
 Documentacion tecnica y ejecutiva del sistema de optimizacion de HDM para franquicias.
 
+Documento detallado para presentacion:
+
+- Ver DOCUMENTATION.md (explica el flujo completo de data -> simulacion -> optimizacion -> resultado, y el impacto de pesos/umbrales en cada etapa)
+
 ## Resumen Ejecutivo
 
 Este pipeline busca el mejor balance entre:
