@@ -112,23 +112,32 @@ BAYESIAN_SETTINGS = {
 # -----------------------------------------------------------------------------
 # ⚠️ IMPORTANTE: Lógica estricta AND.
 # HDM se activa SOLO cuando u1 AND u2 AND u3 son TRUE simultáneamente.
-# UPDATED for JupyterHub deployment (14-day training window)
+# Cómo leer estos umbrales:
+# - Subir un umbral = HDM activa menos veces (más conservador).
+# - Bajar un umbral = HDM activa más veces (más agresivo).
 THRESHOLDS = {
-    # u1 = órdenes pendientes (umbral de activación).
+    # u1 = umbral de órdenes pendientes.
+    # HDM solo puede activar si la carga operativa (backlog) supera este valor.
+    # Alto: activa solo en congestión fuerte. Bajo: activa con más facilidad.
     "u1": (3, 10),
 
-    # u2 = riders cercanos (umbral de activación) - narrowed per P95 analysis.
+    # u2 = umbral de riders cercanos.
+    # Requiere disponibilidad mínima de riders para que activar HDM tenga sentido operacional.
+    # Alto: exige más riders para activar. Bajo: permite activar en escenarios más escasos.
     "u2": (1, 3),
 
-    # u3 = espera máxima (umbral de activación, minutos) - earlier engagement.
-    # Minimum lowered from 5→3 so optimizer can explore less restrictive activation.
+    # u3 = umbral de espera máxima observada (minutos).
+    # Dispara HDM cuando la espera empieza a ser crítica.
+    # Alto: espera a estrés severo. Bajo: interviene más temprano.
     "u3": (3, 10),
 
     # delta_ept = minutos EXTRA de EPT mientras HDM está activo.
-    # Extended with 2 min option to allow more conservative recommendations.
+    # Es la "intensidad" de la intervención: más alto suele bajar AWT,
+    # pero también aumenta el costo en EPT.
     "delta_ept": [2, 4, 6, 8, 10],
 
-    # duracion_hdm = duración del HDM por activación (minutos).
+    # duracion_hdm = duración de HDM por cada activación (minutos).
+    # Más duración mantiene el efecto más tiempo, con potencial mayor impacto en EPT.
     "duracion_hdm": (10, 20),
 }
 
@@ -146,10 +155,11 @@ HDM_EFFECT_SETTINGS = {
 # -----------------------------------------------------------------------------
 # OPTIMIZATION CONSTRAINTS & OBJECTIVE
 # -----------------------------------------------------------------------------
-# Hard safety cap: aumento MÁXIMO de EPT promedio permitido (minutos).
+# Umbral duro de seguridad: aumento MÁXIMO permitido de EPT promedio (minutos).
+# Si una configuración supera este valor, recibe una penalización de exceso.
 MAX_EPT_INCREASE = 0.50
 
-# Activation delay before HDM impact is applied (minutes)
+# Delay operativo entre trigger y efecto visible de HDM (minutos).
 ACTIVATION_DELAY_MINUTES = 2
 
 # Objective weights used by optimizer:
@@ -166,12 +176,13 @@ OPTIMIZER_PENALTIES = {
     "awt_worse_quad": 50,
     "combined_worse_quad": 30,
     "ept_excess_quad": 10,
-    # Very low activation penalty: if HDM is active less than this threshold,
-    # recommendations become operationally irrelevant and are penalized.
+    # Umbral mínimo de activación útil de HDM.
+    # Si HDM activa por debajo de este %, se penaliza por ser una recomendación
+    # poco operable (intervención prácticamente inexistente).
     "hdm_rate_min_threshold": 0.05,
     "hdm_rate_low_coeff": 500.0,
-    # Rate overactivation penalty: HDM active > hdm_rate_threshold of the time
-    # loses operational meaning. Penalizes quadratically beyond the threshold.
+    # Umbral máximo de activación razonable de HDM.
+    # Sobre este %, HDM deja de ser "modo pico" y se penaliza sobreactivación.
     "hdm_rate_threshold": 0.25,
     "hdm_rate_excess_coeff": 20.0,
 }
