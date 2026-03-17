@@ -54,10 +54,7 @@ GRADE="$2"
 START_DATE="$3"
 END_DATE="$4"
 
-# Smoke-test defaults (can be overridden from shell before execution)
-export N_SIMULATIONS="${N_SIMULATIONS:-10}"
-export N_OPTIMIZATION_CALLS="${N_OPTIMIZATION_CALLS:-5}"
-export HDM_SIM_N_JOBS="${HDM_SIM_N_JOBS:-1}"
+# No profile defaults here: use config.py defaults unless env overrides are set.
 
 echo "=========================================="
 echo "HDM Optimization Pipeline - Franchise Mode"
@@ -68,9 +65,21 @@ echo "Date Range: $START_DATE to $END_DATE"
 echo "Country:    Chile (ID: 2)"
 echo "Entity:     PY_CL"
 echo "GCP Project: ${GOOGLE_CLOUD_PROJECT:-$GCP_PROJECT_ID}"
-echo "N_SIMULATIONS: ${N_SIMULATIONS}"
-echo "N_OPTIMIZATION_CALLS: ${N_OPTIMIZATION_CALLS}"
-echo "HDM_SIM_N_JOBS: ${HDM_SIM_N_JOBS}"
+if [ -n "${N_SIMULATIONS}" ]; then
+  echo "N_SIMULATIONS (env override): ${N_SIMULATIONS}"
+else
+  echo "N_SIMULATIONS: config.py default"
+fi
+if [ -n "${N_OPTIMIZATION_CALLS}" ]; then
+  echo "N_OPTIMIZATION_CALLS (env override): ${N_OPTIMIZATION_CALLS}"
+else
+  echo "N_OPTIMIZATION_CALLS: config.py default"
+fi
+if [ -n "${HDM_SIM_N_JOBS}" ]; then
+  echo "HDM_SIM_N_JOBS (env override): ${HDM_SIM_N_JOBS}"
+else
+  echo "HDM_SIM_N_JOBS: config.py/runtime default"
+fi
 echo "=========================================="
 echo ""
 

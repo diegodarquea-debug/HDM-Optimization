@@ -342,6 +342,7 @@ def main():
         f"N_OPTIMIZATION_CALLS={N_OPTIMIZATION_CALLS}, "
         f"OPTIMIZATION_SCOPE={args.optimization_scope}"
     )
+    logger.info(f"Search thresholds from config.py: {THRESHOLDS}")
 
     partner_ids_filter = [int(pid.strip()) for pid in args.partner_ids.split(",")] if args.partner_ids else []
 
