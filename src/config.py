@@ -121,10 +121,12 @@ THRESHOLDS = {
     "u2": (1, 3),
 
     # u3 = espera máxima (umbral de activación, minutos) - earlier engagement.
-    "u3": (5, 10),
+    # Minimum lowered from 5→3 so optimizer can explore less restrictive activation.
+    "u3": (3, 10),
 
-    # delta_ept = minutos EXTRA de EPT mientras HDM está activo - higher thresholds only.
-    "delta_ept": [4, 6, 8, 10],
+    # delta_ept = minutos EXTRA de EPT mientras HDM está activo.
+    # Extended with 2 min option to allow more conservative recommendations.
+    "delta_ept": [2, 4, 6, 8, 10],
 
     # duracion_hdm = duración del HDM por activación (minutos).
     "duracion_hdm": (10, 20),
@@ -135,7 +137,8 @@ THRESHOLDS = {
 # -----------------------------------------------------------------------------
 HDM_EFFECT_SETTINGS = {
     # Reducción proporcional de AWT por cada minuto de delta_ept.
-    "awt_delta_ept_reduction_per_min": 0.03,  # 3.0%
+    # Lowered from 0.03→0.015 to reduce the artificial AWT-gain advantage of high delta_ept.
+    "awt_delta_ept_reduction_per_min": 0.015,  # 1.5%
     # Tope de reducción total de AWT por este ajuste (30% = 0.30).
     "awt_delta_ept_max_reduction": 0.30,
 }
@@ -151,10 +154,11 @@ ACTIVATION_DELAY_MINUTES = 2
 
 # Objective weights used by optimizer:
 # score = (awt_weight * awt_improvement) - (ept_penalty * ept_increase)
-# UPDATED for JupyterHub deployment: more aggressive on AWT reduction, more permissive on EPT increase
+# ept_penalty raised from 0.10→0.20 to properly penalize high delta_ept configs
+# and prevent the optimizer from systematically preferring delta_ept=10.
 OBJECTIVE_WEIGHTS = {
     "awt": 2.5,
-    "ept_penalty": 0.10,
+    "ept_penalty": 0.20,
 }
 
 # Smooth penalty strengths used in optimizer objective.
