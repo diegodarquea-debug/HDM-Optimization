@@ -1,6 +1,6 @@
 # HDM Optimization Pipeline
 
-Documentacion tecnica y ejecutiva del sistema de optimizacion de HDM (Hora de Mayor Demanda) para franquicias.
+Documentacion tecnica y ejecutiva del sistema de optimizacion de HDM para franquicias.
 
 ## Resumen Ejecutivo
 
@@ -17,6 +17,16 @@ La salida principal es una configuracion recomendada de cinco parametros:
 - u3: umbral de espera maxima
 - delta_ept: minutos extra de EPT durante HDM
 - duracion_hdm: duracion de HDM por activacion
+
+### Tabla rapida de umbrales
+
+| Umbral | Que controla | Si sube | Si baja | Rango actual |
+|---|---|---|---|---|
+| u1 | Carga minima de ordenes pendientes para activar HDM | Activa menos veces (mas conservador) | Activa mas veces (mas agresivo) | (3, 10) |
+| u2 | Disponibilidad minima de riders para activar HDM | Exige mas riders para activar | Permite activar con menor disponibilidad | (1, 3) |
+| u3 | Nivel de espera que se considera critica | Espera mas para intervenir (solo estres severo) | Interviene antes (estres moderado) | (3, 10) |
+| delta_ept | Intensidad de la intervencion (minutos extra de EPT) | Mayor potencial de bajar AWT, pero mayor costo en EPT | Menor impacto en AWT y menor costo en EPT | [2, 4, 6, 8, 10] |
+| duracion_hdm | Tiempo que dura HDM por activacion | Mantiene efecto por mas tiempo (puede subir impacto EPT) | Corta antes el efecto y reevalua mas seguido | (10, 20) |
 
 ---
 
