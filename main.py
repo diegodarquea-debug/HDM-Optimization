@@ -18,6 +18,7 @@ from src.config import (
     THRESHOLDS,
     OUTPUT_DIR,
     OBJECTIVE_WEIGHTS,
+    OPTIMIZER_PENALTIES,
     RANDOM_SEED,
     MAX_EPT_INCREASE,
     BAYESIAN_SETTINGS,
@@ -248,7 +249,41 @@ def run_franchise_mode(
                 n_sims=simulation_budget,
                 progress_callback=simulation_progress,
             )
-            mc_df["objective_score"] = (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"]) - (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
+
+            # Keep MC seed ranking aligned with optimizer objective (same penalties).
+            mc_df["rate_penalty"] = 0.0
+            over_rate_mask = mc_df["hdm_activation_rate"] > OPTIMIZER_PENALTIES["hdm_rate_threshold"]
+            mc_df.loc[over_rate_mask, "rate_penalty"] = (
+                OPTIMIZER_PENALTIES["hdm_rate_excess_coeff"]
+                * (mc_df.loc[over_rate_mask, "hdm_activation_rate"] - OPTIMIZER_PENALTIES["hdm_rate_threshold"]) ** 2
+            )
+
+            mc_df["weighted_gain"] = (
+                (OBJECTIVE_WEIGHTS["awt"] * mc_df["awt_improvement"])
+                - (OBJECTIVE_WEIGHTS["ept_penalty"] * mc_df["ept_increase"])
+                - mc_df["rate_penalty"]
+            )
+
+            mc_df["soft_penalty"] = 0.0
+            awt_worse_mask = mc_df["awt_improvement"] < 0
+            mc_df.loc[awt_worse_mask, "soft_penalty"] += (
+                OPTIMIZER_PENALTIES["awt_worse_quad"]
+                * (mc_df.loc[awt_worse_mask, "awt_improvement"].abs() ** 2)
+            )
+
+            combined_worse_mask = mc_df["combined_improvement"] < 0
+            mc_df.loc[combined_worse_mask, "soft_penalty"] += (
+                OPTIMIZER_PENALTIES["combined_worse_quad"]
+                * (mc_df.loc[combined_worse_mask, "combined_improvement"].abs() ** 2)
+            )
+
+            ept_excess_mask = mc_df["ept_increase"] > MAX_EPT_INCREASE
+            mc_df.loc[ept_excess_mask, "soft_penalty"] += (
+                OPTIMIZER_PENALTIES["ept_excess_quad"]
+                * ((mc_df.loc[ept_excess_mask, "ept_increase"] - MAX_EPT_INCREASE) ** 2)
+            )
+
+            mc_df["objective_score"] = mc_df["weighted_gain"] - mc_df["soft_penalty"]
 
             top_k = BAYESIAN_SETTINGS.get("mc_seed_top_k", 20)
             mc_valid = mc_df[mc_df["ept_increase"] <= MAX_EPT_INCREASE].copy()

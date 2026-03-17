@@ -194,8 +194,9 @@ class HDMOptimizer:
         best_agr = valid.loc[valid["awt_improvement"].idxmax()]
         strategies["Agresiva"] = self._row_to_config(best_agr)
         
-        # Equilibrada
-        best_eq = valid.loc[valid["combined_improvement"].idxmax()]
+        # Equilibrada: select by the same objective used during optimization.
+        # This keeps final recommendation aligned with configured weights/penalties.
+        best_eq = valid.loc[valid["objective_score"].idxmax()]
         strategies["Equilibrada"] = self._row_to_config(best_eq)
         
         # Conservadora
