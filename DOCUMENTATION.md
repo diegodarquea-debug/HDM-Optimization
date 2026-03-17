@@ -2,7 +2,7 @@
 
 ## 1) Que hace este proyecto
 
-Este proyecto optimiza la activacion de HDM (Hora de Mayor Demanda) para franquicias.
+Este proyecto optimiza la activacion de HDM a nivel franquicias.
 
 Objetivo operativo:
 
@@ -305,28 +305,8 @@ En este framework la decision final la manda objective_score, no solo combined_i
 
 ---
 
-## 6) Guion sugerido para presentar en reunion
 
-1. Problema de negocio:
-- reducir espera real sin disparar promesa de tiempo
-
-2. Metodo:
-- simulacion de escenarios + optimizacion bayesiana
-
-3. Controles de seguridad:
-- tope EPT (0.50 min)
-- penalizacion por activacion demasiado baja o alta
-
-4. Resultado:
-- configuracion propuesta + impacto esperado (AWT/EPT/tasa HDM)
-
-5. Gobernanza:
-- configuracion centralizada
-- trazabilidad completa de exploracion y optimizacion
-
----
-
-## 7) Referencias de implementacion
+## 6) Referencias de implementacion
 
 - Configuracion: src/config.py
 - Ingestion/preproceso: src/data_loader.py
@@ -335,3 +315,7 @@ En este framework la decision final la manda objective_score, no solo combined_i
 - Simulador: src/simulator.py
 - Optimizador: src/optimizer.py
 - Orquestacion y outputs: main.py
+
+---
+
+Actualizado: 2026-03-17
