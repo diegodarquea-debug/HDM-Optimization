@@ -147,7 +147,7 @@ HDM_EFFECT_SETTINGS = {
 # OPTIMIZATION CONSTRAINTS & OBJECTIVE
 # -----------------------------------------------------------------------------
 # Hard safety cap: aumento MÁXIMO de EPT promedio permitido (minutos).
-MAX_EPT_INCREASE = 15
+MAX_EPT_INCREASE = 0.50
 
 # Activation delay before HDM impact is applied (minutes)
 ACTIVATION_DELAY_MINUTES = 2
@@ -166,6 +166,10 @@ OPTIMIZER_PENALTIES = {
     "awt_worse_quad": 50,
     "combined_worse_quad": 30,
     "ept_excess_quad": 10,
+    # Very low activation penalty: if HDM is active less than this threshold,
+    # recommendations become operationally irrelevant and are penalized.
+    "hdm_rate_min_threshold": 0.05,
+    "hdm_rate_low_coeff": 500.0,
     # Rate overactivation penalty: HDM active > hdm_rate_threshold of the time
     # loses operational meaning. Penalizes quadratically beyond the threshold.
     "hdm_rate_threshold": 0.25,

@@ -47,6 +47,8 @@ class HDMOptimizer:
         self.penalty_awt_worse = OPTIMIZER_PENALTIES["awt_worse_quad"]
         self.penalty_combined_worse = OPTIMIZER_PENALTIES["combined_worse_quad"]
         self.penalty_ept_excess = OPTIMIZER_PENALTIES["ept_excess_quad"]
+        self.penalty_rate_min_threshold = OPTIMIZER_PENALTIES["hdm_rate_min_threshold"]
+        self.penalty_rate_low_coeff = OPTIMIZER_PENALTIES["hdm_rate_low_coeff"]
         self.penalty_rate_threshold = OPTIMIZER_PENALTIES["hdm_rate_threshold"]
         self.penalty_rate_coeff = OPTIMIZER_PENALTIES["hdm_rate_excess_coeff"]
         
@@ -84,12 +86,14 @@ class HDMOptimizer:
         if comb_imp < 0: penalty += self.penalty_combined_worse * (abs(comb_imp) ** 2)
         if ept_inc > MAX_EPT_INCREASE: penalty += self.penalty_ept_excess * ((ept_inc - MAX_EPT_INCREASE) ** 2)
         
-        # Refined objective: Reward AWT reduction, but also reward a "smooth" activation rate.
-        # If HDM is active more than hdm_rate_threshold of the time, it loses operational meaning.
+        # Refined objective: Reward AWT reduction with operationally meaningful activation.
+        # Penalize both over-activation and near-zero activation.
         hdm_rate = result.get("hdm_activation_rate", 0)
         rate_penalty = 0.0
+        if hdm_rate < self.penalty_rate_min_threshold:
+            rate_penalty += self.penalty_rate_low_coeff * ((self.penalty_rate_min_threshold - hdm_rate) ** 2)
         if hdm_rate > self.penalty_rate_threshold:
-            rate_penalty = self.penalty_rate_coeff * ((hdm_rate - self.penalty_rate_threshold) ** 2)
+            rate_penalty += self.penalty_rate_coeff * ((hdm_rate - self.penalty_rate_threshold) ** 2)
 
         weighted_gain = (self.weight_awt * awt_imp) - (self.weight_ept * ept_inc) - rate_penalty
         total_loss = -weighted_gain + penalty

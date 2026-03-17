@@ -252,8 +252,13 @@ def run_franchise_mode(
 
             # Keep MC seed ranking aligned with optimizer objective (same penalties).
             mc_df["rate_penalty"] = 0.0
+            under_rate_mask = mc_df["hdm_activation_rate"] < OPTIMIZER_PENALTIES["hdm_rate_min_threshold"]
+            mc_df.loc[under_rate_mask, "rate_penalty"] += (
+                OPTIMIZER_PENALTIES["hdm_rate_low_coeff"]
+                * (OPTIMIZER_PENALTIES["hdm_rate_min_threshold"] - mc_df.loc[under_rate_mask, "hdm_activation_rate"]) ** 2
+            )
             over_rate_mask = mc_df["hdm_activation_rate"] > OPTIMIZER_PENALTIES["hdm_rate_threshold"]
-            mc_df.loc[over_rate_mask, "rate_penalty"] = (
+            mc_df.loc[over_rate_mask, "rate_penalty"] += (
                 OPTIMIZER_PENALTIES["hdm_rate_excess_coeff"]
                 * (mc_df.loc[over_rate_mask, "hdm_activation_rate"] - OPTIMIZER_PENALTIES["hdm_rate_threshold"]) ** 2
             )
