@@ -35,6 +35,7 @@ from src.analytics import analyze_data, calculate_baseline_metrics
 from src.model import train_models
 from src.simulator import HDMSimulator, evaluate_franchise_configuration
 from src.optimizer import optimize_hdm_thresholds
+from src.timeline_reporting import generate_global_test_timeline_artifacts
 
 logger = logging.getLogger("hdm_pipeline")
 
@@ -321,7 +322,11 @@ def run_franchise_mode(
                 "cluster": cluster_name,
                 "best_config": best_config,
                 "evaluation": franchise_eval,
-                "optimizer": optimizer
+                "optimizer": optimizer,
+                "df_cluster": df_cluster,
+                "baseline_metrics": baseline_metrics,
+                "awt_predictor": awt_predictor,
+                "ept_predictor": ept_predictor,
             })
             progress_bar.set_description(f"{cluster_name}: finalizing")
             progress_bar.update(1)
@@ -460,6 +465,7 @@ def main():
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
         _log_franchise_optimal_summary(cluster_results, run_output_dir)
+        _save_global_test_timeline_outputs(cluster_results, run_output_dir)
         if progress_bar is not None:
             progress_bar.update(1)
             progress_bar.set_description("Completed")
@@ -511,6 +517,45 @@ def _log_franchise_optimal_summary(all_cluster_results, run_output_dir: Path):
         )
 
     logger.info(f"Detailed config CSV: {run_output_dir / 'franchise_optimal_config.csv'}")
+
+
+def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path):
+    """Generate test-only minute-level real vs recommended timeline artifacts for global strategy."""
+    global_result = next((res for res in all_cluster_results if res.get("cluster") == CLUSTER_GLOBAL_NAME), None)
+    if not global_result:
+        logger.warning("Skipping timeline artifacts: global cluster result not found.")
+        return
+
+    df_global = global_result.get("df_cluster")
+    baseline_metrics = global_result.get("baseline_metrics")
+    awt_predictor = global_result.get("awt_predictor")
+    ept_predictor = global_result.get("ept_predictor")
+    best_config = global_result.get("best_config", {})
+
+    if any(item is None for item in [df_global, baseline_metrics, awt_predictor, ept_predictor]):
+        logger.warning("Skipping timeline artifacts: missing simulation inputs in global cluster context.")
+        return
+
+    try:
+        artifacts = generate_global_test_timeline_artifacts(
+            df_global=df_global,
+            awt_predictor=awt_predictor,
+            ept_predictor=ept_predictor,
+            baseline_metrics=baseline_metrics,
+            best_config=best_config,
+            output_dirs=[run_output_dir, OUTPUT_DIR],
+        )
+    except Exception as exc:
+        logger.warning(f"Could not generate global test timeline artifacts: {exc}")
+        return
+
+    if artifacts.get("saved"):
+        split = artifacts.get("split", {})
+        logger.info(
+            "Global test timeline artifacts generated (test rows: %s, test ratio: %.2f).",
+            split.get("n_test"),
+            split.get("test_ratio", 0.0),
+        )
 
 
 def _save_partner_outputs(result, output_dir):

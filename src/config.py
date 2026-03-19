@@ -255,6 +255,10 @@ SIMULATION_RUNTIME_SETTINGS = {
     "progress_log_every_n": _get_int_env("SIM_PROGRESS_LOG_EVERY_N", 5),
 }
 
+TIMELINE_REPORT_SETTINGS = {
+    "rolling_window_minutes": max(1, _get_int_env("TIMELINE_ROLLING_WINDOW_MINUTES", 15)),
+}
+
 # -----------------------------------------------------------------------------
 # BIGQUERY (JupyterHub: uses Default Application Credentials)
 # -----------------------------------------------------------------------------

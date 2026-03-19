@@ -103,11 +103,8 @@ class HDMSimulator:
         u3_met = (awt_values >= u3)
         and_triggered = u1_met & u2_met & u3_met
 
-        # Optimization: detect if linear and whether model expects EPT feature
-        is_linear = hasattr(self.awt_predictor, 'model') and \
-                    hasattr(self.awt_predictor.model, 'coef_') and \
-                    hasattr(self.awt_predictor.model, 'intercept_')
-        has_ept_feat = self.awt_predictor.ept_feature_name is not None
+        # Optimization: detect whether the predictor expects EPT as an input feature.
+        has_ept_feat = getattr(self.awt_predictor, "ept_feature_name", None) is not None
 
         # Factor for HDM effect
         reduction_per_min = HDM_EFFECT_SETTINGS["awt_delta_ept_reduction_per_min"]
@@ -171,10 +168,19 @@ class HDMSimulator:
         else:
             X_pred = np.column_stack([ordenes_values, riders_values, hdm_float])
 
-        if is_linear:
+        if hasattr(self.awt_predictor, "model") and self.awt_predictor.model is not None:
             awt_raw = self.awt_predictor.model.predict(X_pred)
         else:
-            awt_raw = self.awt_predictor.model.predict(X_pred)
+            # Backward-compatible path for simple predictors/mocks exposing only predict().
+            awt_raw = np.array([
+                self.awt_predictor.predict(
+                    float(ordenes_values[i]),
+                    float(riders_values[i]),
+                    float(hdm_float[i]),
+                    float(ept_with_hdm[i]),
+                )
+                for i in range(len(df_sim))
+            ])
 
         if delta_ept > 0:
             awt_raw = np.where(hdm_active_sim == 1, awt_raw * hdm_factor, awt_raw)
@@ -228,6 +234,11 @@ class HDMSimulator:
             "ept_mean": round(ept_mean, 2),
             "activation_delay_applied": ACTIVATION_DELAY_MINUTES,
         }
+
+    def simulate_timeline(self, df: pd.DataFrame, u1: int, u2: int, u3: int,
+                          delta_ept: float, duracion_hdm: int) -> pd.DataFrame:
+        """Run minute-level simulation and return row-level timeline outputs."""
+        return self._run_simulation_loop(df, u1, u2, u3, delta_ept, duracion_hdm)
     
     def run_simulations(
         self,
