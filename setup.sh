@@ -16,7 +16,7 @@ echo "Setting up HDM Optimization Pipeline environment..."
 export GOOGLE_CLOUD_PROJECT="peya-chile"
 export GCP_PROJECT_ID="peya-chile"
 export BQ_LOCATION="US"
-export BQ_TIMEOUT_SECONDS=300
+export BQ_TIMEOUT_SECONDS=1200
 
 # Reset optional runtime overrides so run.sh uses config.py defaults by default.
 unset N_SIMULATIONS
@@ -26,6 +26,7 @@ unset HDM_SIM_N_JOBS
 echo "✓ GCP_PROJECT_ID = $GCP_PROJECT_ID"
 echo "✓ GOOGLE_CLOUD_PROJECT = $GOOGLE_CLOUD_PROJECT"
 echo "✓ BQ_LOCATION = $BQ_LOCATION"
+echo "✓ BQ_TIMEOUT_SECONDS = $BQ_TIMEOUT_SECONDS"
 echo "✓ Cleared runtime overrides: N_SIMULATIONS, N_OPTIMIZATION_CALLS, HDM_SIM_N_JOBS"
 echo ""
 echo "Environment ready! You can now run:"

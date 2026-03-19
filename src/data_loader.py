@@ -2,6 +2,7 @@
 Data loading and preprocessing from CSV (and BigQuery in future).
 Auto-detects partner_id and date ranges.
 """
+import concurrent.futures
 import logging
 import numpy as np
 from pathlib import Path
@@ -148,6 +149,12 @@ def load_bigquery_data(query: Optional[str] = None,
     
     job_config = bigquery.QueryJobConfig(query_parameters=query_params) if query_params else None
     logger.info(f"Executing BigQuery query with {len(query_params)} parameters...")
+    logger.info(
+        "BigQuery execution settings: project=%s, location=%s, timeout=%ss",
+        resolved_project,
+        BQ_LOCATION,
+        BQ_TIMEOUT_SECONDS,
+    )
     
     # Log parameter details (INFO level so user sees them)
     for param in query_params:
@@ -155,7 +162,22 @@ def load_bigquery_data(query: Optional[str] = None,
         logger.info(f"  → Parameter: {param.name} = {param_val}")
 
     query_job = client.query(query, job_config=job_config, location=BQ_LOCATION)
-    query_job.result(timeout=BQ_TIMEOUT_SECONDS)
+    try:
+        query_job.result(timeout=BQ_TIMEOUT_SECONDS)
+    except concurrent.futures.TimeoutError as exc:
+        job_id = getattr(query_job, "job_id", "unknown")
+        logger.error(
+            "BigQuery query timed out after %s seconds (job_id=%s).",
+            BQ_TIMEOUT_SECONDS,
+            job_id,
+        )
+        raise TimeoutError(
+            "BigQuery query exceeded timeout. "
+            f"job_id={job_id}. "
+            "Increase BQ_TIMEOUT_SECONDS (for example: export BQ_TIMEOUT_SECONDS=1200) "
+            "or test with a shorter date range."
+        ) from exc
+
     df = query_job.to_dataframe(create_bqstorage_client=False)
     
     if "momento_exacto" in df.columns:

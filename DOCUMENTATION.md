@@ -1,22 +1,13 @@
 # Documentation
 
-Documento para leer en reunion, paso a paso, con foco en:
-
-- Que entra al modelo
-- Que se calcula en cada etapa
-- Que parametros afectan cada decision
-- Como interpretar el resultado final
-
----
-
-## 0) Resumen en 30 segundos
+## 0) Resumen
 
 El proyecto busca la mejor configuracion de HDM para una franquicia.
 
 Que optimiza:
 
-- Mejorar AWT (espera real del cliente)
-- Controlar EPT (tiempo prometido)
+- Mejorar AWT
+- Controlar EPT
 - Evitar soluciones inutiles (HDM casi nunca activo) o excesivas (HDM casi siempre activo)
 
 Salida final del pipeline:
@@ -96,8 +87,6 @@ Archivo principal: src/data_loader.py
 - BQ_LOCATION
 - BQ_DEFAULT_LOOKBACK_DAYS (solo query default)
 
-### Como explicarlo en reunion
-
 "Primero garantizamos que estamos leyendo exactamente el universo correcto de datos y fechas antes de modelar cualquier cosa."
 
 ---
@@ -131,8 +120,6 @@ Archivo principal: src/data_loader.py -> preprocess_data
 
 - Logica de preproceso definida en codigo (no expuesta como flags)
 
-### Como explicarlo en reunion
-
 "Antes de entrenar, reducimos ruido y estandarizamos la data para que el modelo no aprenda patrones falsos por outliers o nulos."
 
 ---
@@ -150,8 +137,8 @@ Archivo principal: src/analytics.py
 Calcula el punto de partida sin intervencion:
 
 - AWT promedio, p50, p95
-- EPT promedio/p95 (si existe)
-- ordenes/riders descriptivos
+- EPT promedio/p95
+- ordenes/riders
 - tasa historica de HDM
 
 ### Que sale
@@ -164,8 +151,6 @@ Todas las mejoras se miden contra este baseline:
 
 - awt_improvement = awt_baseline - awt_simulado
 - ept_increase = ept_simulado - ept_baseline
-
-### Como explicarlo en reunion
 
 "Si no definimos bien el baseline, no podemos afirmar que una recomendacion mejora o empeora."
 
@@ -185,12 +170,11 @@ Archivo principal: src/model.py
 Se entrenan dos modelos:
 
 1. AWTPredictor
-- Features: ordenes_pendientes, riders_cerca, hdm_activo (+ EPT si existe)
+- Features: ordenes_pendientes, riders_cerca, hdm_activo (+ EPT agregado por trigger)
 - Target: awt_promedio o max_awt_espera_min
 
 2. EPTPredictor
 - Features: ordenes_pendientes, riders_cerca, hdm_activo
-- Target EPT segun prioridad de columnas disponibles
 
 ### Que sale
 
@@ -201,10 +185,8 @@ Se entrenan dos modelos:
 ### Parametros que mandan
 
 - MODEL_TYPE: random_forest, linear_regression, decision_tree
-- TRAIN_TEST_SPLIT
+- TRAIN_TEST_SPLIT --> Que % de la data se usa para entrenar y que % para testear
 - MODEL_SETTINGS (n_estimators, max_depth, etc.)
-
-### Como explicarlo en reunion
 
 "Los modelos aprenden como cambian AWT y EPT segun carga, riders y estado HDM. Eso permite simular escenarios que no vimos exactamente en el historico."
 
@@ -259,8 +241,6 @@ Metricas por configuracion:
 - ACTIVATION_DELAY_MINUTES
 - HDM_EFFECT_SETTINGS
 
-### Como explicarlo en reunion
-
 "Esta etapa responde: si aplicabamos esta politica de HDM sobre la historia real, cual habria sido el impacto en espera y EPT."
 
 ---
@@ -294,10 +274,8 @@ Archivos: src/simulator.py + main.py
 
 - N_SIMULATIONS
 - BAYESIAN_SETTINGS.mc_seed_top_k
-- OBJECTIVE_WEIGHTS
-- OPTIMIZER_PENALTIES
-
-### Como explicarlo en reunion
+- OBJECTIVE_WEIGHTS --> Peso que se le da a ganar awt y ganar ept
+- OPTIMIZER_PENALTIES --> Castigo por sobre/sub activación 
 
 "Monte Carlo barre el mapa completo para no arrancar la optimizacion en una zona ciega."
 
@@ -318,14 +296,14 @@ Archivo principal: src/optimizer.py
 1. Evalua configuraciones con objective_function.
 2. Minimiza total_loss:
 
-- weighted_gain = awt_weight*awt_improvement - ept_penalty*ept_increase - rate_penalty
+- weighted_gain = awt_weight*awt_improvement - ept_penalty*ept_increase - rate_penalty --> Función Objetivo
 - total_loss = -weighted_gain + penalty_terms
 
 3. Penaliza escenarios indeseados:
 
 - awt_improvement < 0
 - combined_improvement < 0
-- ept_increase > MAX_EPT_INCREASE
+- ept_increase > MAX_EPT_INCREASE --> Ej. EPTi: 12min, EPTf: 12.4min, entonces 0.4<0.5 todo ok!
 - hdm_activation_rate demasiado baja o demasiado alta
 
 ### Que sale
@@ -339,8 +317,6 @@ Archivo principal: src/optimizer.py
 - OPTIMIZER_PENALTIES
 - MAX_EPT_INCREASE
 - N_OPTIMIZATION_CALLS
-
-### Como explicarlo en reunion
 
 "Bayesian no prueba todo: aprende en que zonas hay mejores candidatos y concentra ahi el presupuesto de evaluacion."
 
@@ -370,8 +346,6 @@ Archivos: src/optimizer.py + main.py
 - franchise_optimal_config.csv
 - franchise_impact_by_partner.csv
 - optimization_history.csv
-
-### Como explicarlo en reunion
 
 "No entregamos un unico numero: entregamos alternativa agresiva, equilibrada y conservadora, y elegimos por defecto la equilibrada por consistencia con el objetivo de negocio."
 
@@ -416,27 +390,7 @@ Lectura correcta:
 
 ---
 
-## 12) Guion sugerido para presentacion
-
-1. Problema
-- Espera alta en picos, decision HDM historicamente manual
-
-2. Metodo
-- Simulacion de politicas + optimizacion bayesiana
-
-3. Guardrails
-- Tope de EPT
-- Penalizacion por activacion demasiado baja o alta
-
-4. Resultado
-- Configuracion recomendada y metricas de impacto
-
-5. Gobernanza
-- Configuracion centralizada y trazabilidad completa
-
----
-
-## 13) Referencias de implementacion
+## 12) Referencias de implementacion
 
 - Configuracion: src/config.py
 - Ingestion y preproceso: src/data_loader.py

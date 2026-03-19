@@ -178,11 +178,11 @@ OPTIMIZER_PENALTIES = {
     "ept_excess_quad": 10,
     # Umbral mínimo de activación útil de HDM.
     # Si HDM activa por debajo de este %, se penaliza por ser una recomendación
-    # poco operable (intervención prácticamente inexistente).
+    # poco realista (intervención prácticamente inexistente).
     "hdm_rate_min_threshold": 0.05,
     "hdm_rate_low_coeff": 500.0,
     # Umbral máximo de activación razonable de HDM.
-    # Sobre este %, HDM deja de ser "modo pico" y se penaliza sobreactivación.
+    # Sobre este %, HDM deja de ser "high demand" y se penaliza sobreactivación.
     "hdm_rate_threshold": 0.25,
     "hdm_rate_excess_coeff": 20.0,
 }
@@ -262,7 +262,9 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", N
 BQ_DATASET = os.getenv("BQ_DATASET", None)
 BQ_TABLE = os.getenv("BQ_TABLE", None)
 BQ_LOCATION = os.getenv("BQ_LOCATION", "US")
-BQ_TIMEOUT_SECONDS = int(os.getenv("BQ_TIMEOUT_SECONDS", "300"))
+# Complex franchise queries can take several minutes in BigQuery.
+# Keep this timeout generous by default; allow env override per run.
+BQ_TIMEOUT_SECONDS = _get_int_env("BQ_TIMEOUT_SECONDS", 900)
 # Lookback window (days) used ONLY by the fallback default table query
 # (when no --bq-query-file is provided). The franchise SQL file overrides this.
 BQ_DEFAULT_LOOKBACK_DAYS = int(os.getenv("BQ_DEFAULT_LOOKBACK_DAYS", "30"))

@@ -80,6 +80,11 @@ if [ -n "${HDM_SIM_N_JOBS}" ]; then
 else
   echo "HDM_SIM_N_JOBS: config.py/runtime default"
 fi
+if [ -n "${BQ_TIMEOUT_SECONDS}" ]; then
+  echo "BQ_TIMEOUT_SECONDS (env override): ${BQ_TIMEOUT_SECONDS}"
+else
+  echo "BQ_TIMEOUT_SECONDS: config.py default"
+fi
 echo "=========================================="
 echo ""
 
