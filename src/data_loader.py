@@ -4,6 +4,7 @@ Auto-detects partner_id and date ranges.
 """
 import concurrent.futures
 import logging
+import time
 import numpy as np
 from pathlib import Path
 from datetime import date, datetime
@@ -162,21 +163,45 @@ def load_bigquery_data(query: Optional[str] = None,
         logger.info(f"  → Parameter: {param.name} = {param_val}")
 
     query_job = client.query(query, job_config=job_config, location=BQ_LOCATION)
-    try:
-        query_job.result(timeout=BQ_TIMEOUT_SECONDS)
-    except concurrent.futures.TimeoutError as exc:
-        job_id = getattr(query_job, "job_id", "unknown")
-        logger.error(
-            "BigQuery query timed out after %s seconds (job_id=%s).",
-            BQ_TIMEOUT_SECONDS,
-            job_id,
-        )
-        raise TimeoutError(
-            "BigQuery query exceeded timeout. "
-            f"job_id={job_id}. "
-            "Increase BQ_TIMEOUT_SECONDS (for example: export BQ_TIMEOUT_SECONDS=1200) "
-            "or test with a shorter date range."
-        ) from exc
+    job_id = getattr(query_job, "job_id", "unknown")
+    logger.info("BigQuery job submitted: job_id=%s, location=%s", job_id, BQ_LOCATION)
+    logger.info(
+        "Track status in CLI: bq --location=%s show -j %s",
+        BQ_LOCATION,
+        job_id,
+    )
+
+    start_wait = time.monotonic()
+    poll_interval_seconds = 30
+    while True:
+        elapsed = int(time.monotonic() - start_wait)
+        remaining = BQ_TIMEOUT_SECONDS - elapsed
+        if remaining <= 0:
+            logger.error(
+                "BigQuery query timed out after %s seconds (job_id=%s).",
+                BQ_TIMEOUT_SECONDS,
+                job_id,
+            )
+            raise TimeoutError(
+                "BigQuery query exceeded timeout. "
+                f"job_id={job_id}. "
+                "Increase BQ_TIMEOUT_SECONDS (for example: export BQ_TIMEOUT_SECONDS=1800), "
+                "test with a shorter date range, "
+                "or check status with: "
+                f"bq --location={BQ_LOCATION} show -j {job_id}."
+            )
+
+        try:
+            # Poll with short blocking windows so we can emit periodic progress logs.
+            query_job.result(timeout=min(poll_interval_seconds, remaining))
+            break
+        except concurrent.futures.TimeoutError:
+            logger.info(
+                "BigQuery query still running... job_id=%s, elapsed=%ss, remaining=%ss",
+                job_id,
+                elapsed,
+                remaining,
+            )
 
     df = query_job.to_dataframe(create_bqstorage_client=False)
     
