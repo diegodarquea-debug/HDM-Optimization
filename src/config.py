@@ -268,7 +268,7 @@ BQ_TABLE = os.getenv("BQ_TABLE", None)
 BQ_LOCATION = os.getenv("BQ_LOCATION", "US")
 # Complex franchise queries can take several minutes in BigQuery.
 # Keep this timeout generous by default; allow env override per run.
-BQ_TIMEOUT_SECONDS = _get_int_env("BQ_TIMEOUT_SECONDS", 900)
+BQ_TIMEOUT_SECONDS = _get_int_env("BQ_TIMEOUT_SECONDS", 1200)
 # Lookback window (days) used ONLY by the fallback default table query
 # (when no --bq-query-file is provided). The franchise SQL file overrides this.
 BQ_DEFAULT_LOOKBACK_DAYS = int(os.getenv("BQ_DEFAULT_LOOKBACK_DAYS", "30"))
