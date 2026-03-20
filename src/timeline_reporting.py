@@ -121,7 +121,9 @@ def generate_global_test_timeline_artifacts(
 
     _, df_test, split_metadata = temporal_train_test_split_df(df_global, TRAIN_TEST_SPLIT)
     if df_test.empty:
-        logger.warning("Skipping timeline artifacts: temporal test slice is empty.")
+        msg = f"Skipping timeline artifacts: temporal test slice is empty (total rows={len(df_global)}, split={TRAIN_TEST_SPLIT})."
+        logger.warning(msg)
+        print(f"\n[TIMELINE] {msg}\n", flush=True)
         return {"saved": False, "reason": "empty_test_slice", "split": split_metadata}
 
     cfg = _get_required_config(best_config)

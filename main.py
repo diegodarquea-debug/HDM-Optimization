@@ -523,7 +523,9 @@ def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path
     """Generate test-only minute-level real vs recommended timeline artifacts for global strategy."""
     global_result = next((res for res in all_cluster_results if res.get("cluster") == CLUSTER_GLOBAL_NAME), None)
     if not global_result:
-        logger.warning("Skipping timeline artifacts: global cluster result not found.")
+        msg = f"Skipping timeline artifacts: global cluster '{CLUSTER_GLOBAL_NAME}' not found in results {[r.get('cluster') for r in all_cluster_results]}."
+        logger.warning(msg)
+        print(f"\n[TIMELINE] {msg}\n", flush=True)
         return
 
     df_global = global_result.get("df_cluster")
@@ -533,7 +535,9 @@ def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path
     best_config = global_result.get("best_config", {})
 
     if any(item is None for item in [df_global, baseline_metrics, awt_predictor, ept_predictor]):
-        logger.warning("Skipping timeline artifacts: missing simulation inputs in global cluster context.")
+        msg = f"Skipping timeline artifacts: missing simulation inputs (df={df_global is not None}, baseline={baseline_metrics is not None}, awt={awt_predictor is not None}, ept={ept_predictor is not None})."
+        logger.warning(msg)
+        print(f"\n[TIMELINE] {msg}\n", flush=True)
         return
 
     try:
@@ -546,7 +550,8 @@ def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path
             output_dirs=[run_output_dir, OUTPUT_DIR],
         )
     except Exception as exc:
-        logger.warning(f"Could not generate global test timeline artifacts: {exc}")
+        logger.exception("Could not generate global test timeline artifacts: %s", exc)
+        print(f"\n[TIMELINE] ERROR generating artifacts: {exc}\n", flush=True)
         return
 
     if artifacts.get("saved"):
