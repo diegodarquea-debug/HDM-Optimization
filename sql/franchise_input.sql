@@ -36,11 +36,13 @@ vendor_scope AS (
 ),
 
 time_grid AS (
+  -- Only keep Friday (6), Saturday (7), Sunday (1) for weekend-only threshold calibration.
   SELECT CAST(ts AS DATETIME) AS dt_snapshot
   FROM params, UNNEST(GENERATE_TIMESTAMP_ARRAY(
     CAST(start_date AS TIMESTAMP),
     TIMESTAMP(DATETIME(end_date, '23:59:59')),
     INTERVAL 1 MINUTE)) AS ts
+  WHERE EXTRACT(DAYOFWEEK FROM ts) IN (1, 6, 7)
 ),
 
 hdm_data AS (
