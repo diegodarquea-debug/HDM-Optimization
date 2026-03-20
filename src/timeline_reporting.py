@@ -20,7 +20,7 @@ TIMELINE_SMOOTHED_PNG_NAME = "global_test_timeline_smoothed.png"
 _METRIC_SPECS = [
     ("awt", "awt_real", "awt_sim", "AWT (min)"),
     ("ept", "ept_real", "ept_sim", "EPT (min)"),
-    ("hdm", "hdm_real", "hdm_sim", "HDM activo (%)"),
+    ("hdm", "hdm_real", "hdm_sim", "HDM activo (0=off, 1=on)"),
     ("ordenes", "ordenes_real", "ordenes_sim", "Ordenes pendientes"),
     ("riders", "riders_real", "riders_sim", "Riders esperando"),
 ]
@@ -35,8 +35,8 @@ def _aggregate_minute_level(df_sim: pd.DataFrame) -> pd.DataFrame:
             awt_sim=("awt_predicted", "mean"),
             ept_real=("ept_base", "mean"),
             ept_sim=("ept_with_hdm", "mean"),
-            hdm_real=("hdm_activo", "mean"),
-            hdm_sim=("hdm_active_sim", "mean"),
+            hdm_real=("hdm_activo", "max"),
+            hdm_sim=("hdm_active_sim", "max"),
             ordenes_real=("ordenes_pendientes", "sum"),
             ordenes_sim=("ordenes_pendientes", "sum"),
             riders_real=("riders_cerca", "sum"),
@@ -46,9 +46,9 @@ def _aggregate_minute_level(df_sim: pd.DataFrame) -> pd.DataFrame:
         .reset_index(drop=True)
     )
 
-    # Keep HDM as percentage for easier business interpretation.
-    timeline["hdm_real"] = timeline["hdm_real"] * 100.0
-    timeline["hdm_sim"] = timeline["hdm_sim"] * 100.0
+    # HDM is binary: 1 if active in any row of that minute, 0 otherwise.
+    timeline["hdm_real"] = timeline["hdm_real"].clip(0, 1).astype(int)
+    timeline["hdm_sim"] = timeline["hdm_sim"].clip(0, 1).astype(int)
     return timeline
 
 
@@ -76,7 +76,9 @@ def _plot_timeline(
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
         if metric_key == "hdm":
-            ax.set_ylim(bottom=0)
+            ax.set_ylim(-0.1, 1.3)
+            ax.set_yticks([0, 1])
+            ax.set_yticklabels(["0 (off)", "1 (on)"])
 
     axes[0].legend(loc="upper right", ncol=2)
     axes[-1].set_xlabel("Fecha (nivel minuto)")
