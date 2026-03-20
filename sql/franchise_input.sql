@@ -12,7 +12,7 @@ WITH params AS (
   SELECT
     @start_date AS start_date,
     @end_date AS end_date,
-    @target_franchise AS target_franchise,
+    UPPER(@target_franchise) AS target_franchise,
     @target_grade AS target_grade,
     COALESCE(@target_country_id, 2) AS target_country_id,
     COALESCE(@target_entity_id, 'PY_CL') AS target_entity_id
