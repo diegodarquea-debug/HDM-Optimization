@@ -12,7 +12,7 @@ WITH params AS (
   SELECT
     @start_date AS start_date,
     @end_date AS end_date,
-    UPPER(@target_franchise) AS target_franchise,
+    REGEXP_REPLACE(UPPER(@target_franchise), r'[^A-Z0-9]', '') AS target_franchise,
     @target_grade AS target_grade,
     COALESCE(@target_country_id, 2) AS target_country_id,
     COALESCE(@target_entity_id, 'PY_CL') AS target_entity_id
@@ -27,7 +27,7 @@ vendor_scope AS (
   INNER JOIN `peya-data-origins-pro.cl_core.growth_vendor_attributes` attr
     ON CAST(p.partner_id AS STRING) = attr.vendor_code
   WHERE p.country_id = (SELECT target_country_id FROM params)
-    AND UPPER(p.franchise.franchise_name) LIKE CONCAT('%', (SELECT target_franchise FROM params), '%')
+    AND REGEXP_REPLACE(UPPER(p.franchise.franchise_name), r'[^A-Z0-9]', '') LIKE CONCAT('%', (SELECT target_franchise FROM params), '%')
     AND attr.entity_id = (SELECT target_entity_id FROM params)
     AND attr.attributes.fixed_vendor_grade = (SELECT target_grade FROM params)
     AND attr.attributes.is_latest_record = TRUE
