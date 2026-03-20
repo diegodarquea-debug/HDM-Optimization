@@ -556,8 +556,10 @@ def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path
 
     if artifacts.get("saved"):
         split = artifacts.get("split", {})
+        days = ", ".join(artifacts.get("days", []))
         logger.info(
-            "Global test timeline artifacts generated (test rows: %s, test ratio: %.2f).",
+            "Global hourly profile artifacts generated (days: %s | test rows: %s, test ratio: %.2f).",
+            days,
             split.get("n_test"),
             split.get("test_ratio", 0.0),
         )
