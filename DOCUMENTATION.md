@@ -1,6 +1,36 @@
 # Documentation
 
-## 0) Resumen
+## 0) Comandos de Traspaso (JupyterHub)
+
+Ejecutar estos comandos al inicio para garantizar que todo funcione en la version correcta:
+
+```bash
+cd /home/jovyan/projects/HDM-Optimization
+git pull --ff-only origin main
+source ./setup.sh
+```
+
+Comando principal para correr la simulacion y generar los graficos que interesan:
+
+```bash
+bash ./run.sh KFC AAA 2026-02-16 2026-03-01 "all"
+```
+
+Verificacion rapida de artefactos clave:
+
+```bash
+ls outputs/global_test_timeline_*.png
+ls outputs/latest_run_summary.json
+```
+
+Notas:
+
+- `run.sh` genera automaticamente recomendacion, CSVs, PNGs de timeline y `run_summary.json`.
+- Si se quieren dias especificos, usar el quinto parametro, por ejemplo: `"lun,mie,vie"` o `"1,6,7"`.
+
+---
+
+## 1) Resumen
 
 El proyecto busca la mejor configuracion de HDM para una franquicia.
 
@@ -21,7 +51,7 @@ Salida final del pipeline:
 
 ---
 
-## 1) Data de entrada
+## 2) Data de entrada
 
 ### 1.1 Que data entra
 
@@ -52,7 +82,7 @@ Columnas opcionales (mejoran precision):
 
 ---
 
-## 2) Etapa A - Ingestion
+## 3) Etapa A - Ingestion
 
 Archivo principal: src/data_loader.py
 
@@ -91,7 +121,7 @@ Archivo principal: src/data_loader.py
 
 ---
 
-## 3) Etapa B - Preprocesamiento
+## 4) Etapa B - Preprocesamiento
 
 Archivo principal: src/data_loader.py -> preprocess_data
 
@@ -124,7 +154,7 @@ Archivo principal: src/data_loader.py -> preprocess_data
 
 ---
 
-## 4) Etapa C - Baseline
+## 5) Etapa C - Baseline
 
 Archivo principal: src/analytics.py
 
@@ -156,7 +186,7 @@ Todas las mejoras se miden contra este baseline:
 
 ---
 
-## 5) Etapa D - Entrenamiento de modelos
+## 6) Etapa D - Entrenamiento de modelos
 
 Archivo principal: src/model.py
 
@@ -192,7 +222,7 @@ Se entrenan dos modelos:
 
 ---
 
-## 6) Etapa E - Simulacion de escenarios HDM
+## 7) Etapa E - Simulacion de escenarios HDM
 
 Archivo principal: src/simulator.py
 
@@ -245,7 +275,7 @@ Metricas por configuracion:
 
 ---
 
-## 7) Etapa F - Monte Carlo (exploracion amplia)
+## 8) Etapa F - Monte Carlo (exploracion amplia)
 
 Archivos: src/simulator.py + main.py
 
@@ -281,7 +311,7 @@ Archivos: src/simulator.py + main.py
 
 ---
 
-## 8) Etapa G - Optimizacion Bayesiana (refinamiento)
+## 9) Etapa G - Optimizacion Bayesiana (refinamiento)
 
 Archivo principal: src/optimizer.py
 
@@ -322,7 +352,7 @@ Archivo principal: src/optimizer.py
 
 ---
 
-## 9) Etapa H - Seleccion de estrategia final y reportes
+## 10) Etapa H - Seleccion de estrategia final y reportes
 
 Archivos: src/optimizer.py + main.py
 
@@ -351,7 +381,7 @@ Archivos: src/optimizer.py + main.py
 
 ---
 
-## 10) Tabla maestra: impacto de cada parametro
+## 11) Tabla maestra: impacto de cada parametro
 
 | Parametro | Donde pega | Si sube | Si baja |
 |---|---|---|---|
@@ -374,7 +404,7 @@ Archivos: src/optimizer.py + main.py
 
 ---
 
-## 11) Como leer un resultado final
+## 12) Como leer un resultado final
 
 Ejemplo:
 
@@ -390,7 +420,7 @@ Lectura correcta:
 
 ---
 
-## 12) Referencias de implementacion
+## 13) Referencias de implementacion
 
 - Configuracion: src/config.py
 - Ingestion y preproceso: src/data_loader.py

@@ -1,5 +1,35 @@
 # HDM Optimization Pipeline
 
+## Traspaso Rapido (Primeros comandos en JupyterHub)
+
+1. Sincronizar y preparar entorno:
+
+```bash
+cd /home/jovyan/projects/HDM-Optimization
+git pull --ff-only origin main
+source ./setup.sh
+```
+
+2. Ejecutar simulacion que genera recomendacion + graficos + resumen completo:
+
+```bash
+bash ./run.sh KFC AAA 2026-02-16 2026-03-01 "all"
+```
+
+3. Verificar graficos generados:
+
+```bash
+ls outputs/global_test_timeline_*.png
+```
+
+4. Verificar resumen integral de la corrida:
+
+```bash
+ls outputs/latest_run_summary.json
+```
+
+El comando de `run.sh` genera automaticamente los graficos de timeline por dia y el archivo `run_summary.json` para compartir resultados.
+
 Pipeline de optimizacion de HDM para franquicias, con foco en equilibrio entre:
 
 - Mejora de AWT (tiempo de espera)
