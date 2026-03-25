@@ -25,7 +25,7 @@ ls outputs/global_test_timeline_*.png
 ls outputs/latest_run_summary.json
 ```
 
-Visualizacion en Notebook (copiar en una celda):
+Visualizacion (en un Notebook aparte dentro de Jupyter) (copiar en una celda):
 
 ```python
 from pathlib import Path
@@ -125,6 +125,12 @@ Archivo principal: src/data_loader.py
 2. En BigQuery:
 - tipa parametros (DATE, INT64, STRING, ARRAY)
 - ejecuta query con timeout y location
+
+Mejora recomendada para reducir costo de consultas SQL:
+
+- Crear una tabla propia (curada) con granularidad minuto a minuto para las franquicias y periodos mas consultados.
+- Alimentar esa tabla con un job programado (por ejemplo diario) y luego consultar esa tabla en lugar de recalcular todo desde tablas crudas en cada corrida.
+- Beneficio: menos bytes procesados por consulta, menor costo y menor latencia cuando se quiere analizar otra franquicia o repetir pruebas.
 
 3. Filtra por modo:
 - franchise -> por ventana de fechas
