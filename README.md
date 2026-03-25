@@ -1,295 +1,153 @@
 # HDM Optimization Pipeline
 
-Documentacion tecnica y ejecutiva del sistema de optimizacion de HDM para franquicias.
+Pipeline de optimizacion de HDM para franquicias, con foco en equilibrio entre:
 
-Documento detallado para presentacion:
+- Mejora de AWT (tiempo de espera)
+- Control de incremento de EPT
+- Recomendaciones operables (evitar HDM casi nunca activo o excesivo)
 
-- Ver DOCUMENTATION.md (explica el flujo completo de data -> simulacion -> optimizacion -> resultado, y el impacto de pesos/umbrales en cada etapa)
+Para documentacion extendida del enfoque y negocio, ver `DOCUMENTATION.md`.
 
-## Resumen Ejecutivo
+## Estado Actual (Marzo 2026)
 
-Este pipeline busca el mejor balance entre:
+Esta version incluye:
 
-- Reducir AWT (tiempo de espera del cliente)
-- Controlar el aumento de EPT (tiempo prometido)
-- Evitar recomendaciones operativamente inutiles (HDM casi nunca activo) o excesivas (HDM casi siempre activo)
+- Timeout BigQuery por defecto en 1200s
+- Heartbeat de jobs BigQuery (progreso cada 30s con `job_id`)
+- Filtro de dias configurable por CLI (`--days-of-week`)
+- Generacion de timeline global por dia (Lunes a Domingo)
+- Nuevo artefacto integral `run_summary.json` con todo lo usado en la simulacion
 
-La salida principal es una configuracion recomendada de cinco parametros:
-
-- u1: umbral de ordenes pendientes
-- u2: umbral de riders cercanos
-- u3: umbral de espera maxima
-- delta_ept: minutos extra de EPT durante HDM
-- duracion_hdm: duracion de HDM por activacion
-
-### Tabla rapida de umbrales
-
-| Umbral | Que controla | Si sube | Si baja | Rango actual |
-|---|---|---|---|---|
-| u1 | Carga minima de ordenes pendientes para activar HDM | Activa menos veces (mas conservador) | Activa mas veces (mas agresivo) | (3, 10) |
-| u2 | Disponibilidad minima de riders para activar HDM | Exige mas riders para activar | Permite activar con menor disponibilidad | (1, 3) |
-| u3 | Nivel de espera que se considera critica | Espera mas para intervenir (solo estres severo) | Interviene antes (estres moderado) | (3, 10) |
-| delta_ept | Intensidad de la intervencion (minutos extra de EPT) | Mayor potencial de bajar AWT, pero mayor costo en EPT | Menor impacto en AWT y menor costo en EPT | [2, 4, 6, 8, 10] |
-| duracion_hdm | Tiempo que dura HDM por activacion | Mantiene efecto por mas tiempo (puede subir impacto EPT) | Corta antes el efecto y reevalua mas seguido | (10, 20) |
-
----
-
-## Novedades Clave (Marzo 2026)
-
-Se actualizaron reglas para hacer el resultado mas realista para produccion:
-
-1. Tope de EPT mucho mas estricto:
-- MAX_EPT_INCREASE paso de 15.0 a 0.50 minutos
-
-2. Penalizacion por activacion HDM extremadamente baja:
-- Si HDM esta activo menos de 5% del tiempo, el optimizador penaliza esa configuracion
-- Se agrego una penalizacion cuadratica fuerte para evitar recomendaciones degeneradas con tasa cercana a 0%
-
-3. Calibracion de sensibilidad AWT/EPT:
-- ept_penalty subio de 0.10 a 0.20
-- awt_delta_ept_reduction_per_min bajo de 0.03 a 0.015
-- delta_ept ahora explora [2, 4, 6, 8, 10]
-- u3 ahora explora (3, 10)
-
-4. Coherencia total entre etapas:
-- Monte Carlo y Bayesian usan la misma logica de score y penalizaciones
-- La estrategia Equilibrada se selecciona por objective_score
-
----
-
-## Como Decide el Optimizador
-
-El sistema minimiza una perdida total:
-
-- weighted_gain = (awt_weight * awt_improvement) - (ept_penalty * ept_increase) - rate_penalty
-- total_loss = -weighted_gain + penalty_terms
-
-Donde:
-
-- awt_improvement: mejora en minutos versus baseline
-- ept_increase: aumento en minutos versus baseline
-- rate_penalty: penaliza sobre-activacion y sub-activacion
-
-### Penalizaciones activas
-
-1. Empeorar AWT
-- awt_worse_quad = 50
-
-2. Empeorar tiempo combinado (AWT + EPT)
-- combined_worse_quad = 30
-
-3. Superar tope de EPT
-- ept_excess_quad = 10
-- Tope actual: MAX_EPT_INCREASE = 0.50 min
-
-4. HDM casi nunca activo
-- hdm_rate_min_threshold = 0.05
-- hdm_rate_low_coeff = 500.0
-
-5. HDM demasiado activo
-- hdm_rate_threshold = 0.25
-- hdm_rate_excess_coeff = 20.0
-
----
-
-## Configuracion Actual (Fuente Unica de Verdad)
-
-Toda la configuracion vive en src/config.py.
-
-### Espacio de busqueda
-
-- u1: (3, 10)
-- u2: (1, 3)
-- u3: (3, 10)
-- delta_ept: [2, 4, 6, 8, 10]
-- duracion_hdm: (10, 20)
-
-### Efecto de HDM sobre AWT
-
-- awt_delta_ept_reduction_per_min: 0.015
-- awt_delta_ept_max_reduction: 0.30
-
-### Funcion objetivo
-
-- awt: 2.5
-- ept_penalty: 0.20
-
-### Restricciones operativas
-
-- MAX_EPT_INCREASE: 0.50
-- ACTIVATION_DELAY_MINUTES: 2
-
-### Modelo
-
-- MODEL_TYPE: "random_forest"
-- Opciones soportadas: "linear_regression", "random_forest", "decision_tree"
-- TRAIN_TEST_SPLIT: 0.60
-- RANDOM_SEED: 42
-
----
-
-## Flujo del Pipeline
-
-1. Carga de datos
-- Desde BigQuery o CSV
-- Filtros por franquicia, grade, pais, entidad y fecha
-
-2. Baseline
-- Calcula AWT y EPT de referencia sin intervencion
-
-3. Entrenamiento de modelos
-- AWTPredictor y EPTPredictor
-
-4. Exploracion Monte Carlo
-- Evalua N_SIMULATIONS configuraciones aleatorias
-
-5. Optimizacion Bayesiana
-- Toma seeds del Monte Carlo y refina en N_OPTIMIZATION_CALLS iteraciones
-
-6. Estrategias finales
-- Agresiva, Equilibrada (default), Conservadora
-
-7. Export de resultados
-- CSVs en outputs/
-
----
-
-## Estrategias de Salida
-
-1. Agresiva
-- Maximiza awt_improvement
-
-2. Equilibrada (principal)
-- Maximiza objective_score (alineado al objetivo real)
-
-3. Conservadora
-- Entre candidatos con mejora minima de AWT, minimiza tasa de activacion
-
----
-
-## Ejecucion en JupyterHub
-
-## 1) Actualizar codigo
+## Quick Start (JupyterHub)
 
 ```bash
+cd /home/jovyan/projects/HDM-Optimization
 git pull --ff-only origin main
-```
-
-## 2) Preparar entorno
-
-```bash
 source ./setup.sh
 ```
 
-## 3) Ejecutar segun perfil
-
-### Perfil base (usa defaults de config.py)
+Ejecucion base:
 
 ```bash
 bash ./run.sh KFC AAA 2026-02-16 2026-03-01
 ```
 
-### Perfil validacion
+Ejecucion indicando dias especificos:
 
 ```bash
-bash ./run_realistic.sh KFC AAA 2026-02-16 2026-03-01
+bash ./run.sh KFC AAA 2026-02-16 2026-03-01 "lun,mie,vie"
+bash ./run.sh KFC AAA 2026-02-16 2026-03-01 "1,6,7"
 ```
 
-### Perfil produccion
+Convencion de dias BigQuery: `1=Sunday ... 7=Saturday`.
+
+## Uso de `run.sh`
 
 ```bash
-bash ./run_prod.sh KFC AAA 2026-02-16 2026-03-01
+./run.sh <FRANCHISE> <GRADE> <START_DATE> <END_DATE> [DAYS_OF_WEEK]
 ```
 
-Importante:
+Parametros:
 
-- run.sh no fuerza valores smoke. Si no defines variables, usa config.py.
-- run_realistic.sh y run_prod.sh si setean perfiles por defecto (pero se pueden overridear por env var).
+- `FRANCHISE`: nombre de franquicia
+- `GRADE`: `AAA`, `AA` o `A`
+- `START_DATE`, `END_DATE`: formato `YYYY-MM-DD`
+- `DAYS_OF_WEEK` (opcional): `all` | `1-7` | `mon,tue,...` | `lun,mar,...`
 
----
+Si no envias `DAYS_OF_WEEK`, usa `all`.
 
-## Variables de Entorno Relevantes
+## Configuracion de Modelo y Optimizacion
 
-Infraestructura:
+Fuente unica de verdad: `src/config.py`.
 
-- GOOGLE_CLOUD_PROJECT
-- GCP_PROJECT_ID
-- BQ_LOCATION
-- BQ_TIMEOUT_SECONDS
+Valores relevantes actuales:
+
+- `N_SIMULATIONS = 2000`
+- `N_OPTIMIZATION_CALLS = 80`
+- `TRAIN_TEST_SPLIT = 0.6`
+- `MAX_EPT_INCREASE = 0.50`
+- `THRESHOLDS`: `u1(3,10)`, `u2(1,3)`, `u3(3,10)`, `delta_ept[2,4,6,8,10]`, `duracion_hdm(10,20)`
+- `OBJECTIVE_WEIGHTS`: `awt=2.5`, `ept_penalty=0.20`
+
+## Salidas Generadas
+
+Salida consolidada (se guarda en `outputs/` y tambien en `outputs/runs/<timestamp>_run/`):
+
+- `franchise_optimal_config.csv`
+- `franchise_impact_by_partner.csv`
+- `optimization_history.csv`
+- `test_timeline_global_equilibrada.csv`
+- `global_test_timeline_<dia>.png` (ej: `lunes`, `martes`, ...)
+- `run_summary.json`  <-- resumen integral de la corrida
+
+Punteros rapidos:
+
+- `outputs/latest_run_path.txt`
+- `outputs/latest_run_summary.json`
+
+## Que contiene `run_summary.json`
+
+Archivo pensado para compartir una corrida completa sin reenviar multiples CSVs.
+
+Incluye:
+
+- `run_metadata`: parametros de entrada (franquicia, grade, fechas, dias, pais, entidad)
+- `simulation_config`: configuracion completa usada por la corrida
+- `clusters[]`:
+	- `data_summary`
+	- `baseline_metrics`
+	- `model_quality` (R2, RMSE, MAE y split metadata)
+	- `best_config`
+	- `strategies` (`Agresiva`, `Equilibrada`, `Conservadora`)
+	- `franchise_evaluation` agregada
+	- `partner_impact` por partner
+
+Ejemplo en notebook:
+
+```python
+import json
+from pathlib import Path
+
+summary = json.loads(Path("outputs/latest_run_summary.json").read_text())
+global_cluster = next(c for c in summary["clusters"] if c["cluster"] == "Global")
+global_cluster["strategies"]
+```
+
+## Variables de Entorno Utiles
+
+Infra:
+
+- `GOOGLE_CLOUD_PROJECT` o `GCP_PROJECT_ID`
+- `BQ_LOCATION`
+- `BQ_TIMEOUT_SECONDS`
 
 Performance:
 
-- N_SIMULATIONS
-- N_OPTIMIZATION_CALLS
-- HDM_SIM_N_JOBS
+- `N_SIMULATIONS`
+- `N_OPTIMIZATION_CALLS`
+- `HDM_SIM_N_JOBS`
 
-Si no defines N_SIMULATIONS/N_OPTIMIZATION_CALLS en run.sh, se usan los valores de src/config.py.
+Si no defines overrides, se usan defaults de `src/config.py`.
 
----
+## Troubleshooting Rapido
 
-## Salidas Principales
+- Error de 0 filas en query:
+	- Revisar filtros de `franchise`, `grade`, fechas y dias (`--days-of-week`)
+- Timeout en BigQuery:
+	- Aumentar `BQ_TIMEOUT_SECONDS` (ej. `1800`)
+	- Usar `job_id` logueado para inspeccion en consola BigQuery
+- No aparecen PNGs de ciertos dias:
+	- Verificar que existan filas en test slice para esos dias
 
-- outputs/monte_carlo_franchise_exploration.csv
-- outputs/optimization_history.csv
-- outputs/franchise_optimal_config.csv
-- outputs/franchise_impact_by_partner.csv
+## Tests
 
-Tambien se versionan corridas en outputs/runs/ y se guarda un puntero en outputs/latest_run_path.txt.
-
----
-
-## Guia Rapida de Lectura de Resultados
-
-1. Revisar franchise_optimal_config.csv
-- Verificar que Equilibrada tenga awt_improvement > 0
-- Verificar ept_increase <= 0.50
-- Verificar hdm_activation_rate en rango razonable (idealmente entre 0.05 y 0.25)
-
-2. Revisar optimization_history.csv
-- Buscar convergencia del objective_score
-- Confirmar que no se concentre en recomendaciones con activacion casi cero
-
-3. Revisar impact_by_partner
-- Detectar partners con mejora negativa para analisis por segmento
-
----
-
-## Gobierno y Auditoria
-
-El sistema es auditable porque:
-
-- Configuracion centralizada en src/config.py
-- Semilla fija para reproducibilidad
-- Historial completo de Monte Carlo y Bayesian
-- Corridas versionadas por timestamp
-
----
-
-## Requisitos
+Suite vigente:
 
 ```bash
-pip install -r requirements.txt
+python -m unittest discover -s tests -q
 ```
 
-Dependencias principales:
+## Owner
 
-- pandas
-- numpy
-- scikit-learn
-- scikit-optimize
-- google-cloud-bigquery
-- tqdm
-- joblib
-
----
-
-## Nota para Presentacion
-
-Mensaje clave para negocio:
-
-"El modelo ya no optimiza solo por bajar AWT a cualquier costo. Ahora exige control estricto de EPT y descarta configuraciones que casi no activan HDM, logrando recomendaciones mas operables y defendibles en produccion."
-
----
-
-Actualizado: 2026-03-16
-Owner: Operaciones + Data Science
+- Operaciones + Data Science
+- Actualizado: 2026-03-25
