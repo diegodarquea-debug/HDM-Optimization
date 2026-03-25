@@ -3,6 +3,7 @@ Main pipeline: Load → Analyze → Train → Simulate → Optimize
 Supports both PARTNER-level (single partner) and FRANCHISE-level (all partners) modes.
 """
 import sys
+import json
 import argparse
 import logging
 import numpy as np
@@ -28,6 +29,8 @@ from src.config import (
     PIPELINE_CHOICES,
     PIPELINE_DEFAULTS,
     CLUSTERING_SETTINGS,
+    TRAIN_TEST_SPLIT,
+    MODEL_SETTINGS,
     configure_logging,
 )
 from src.data_loader import load_and_prepare_data, get_unique_partners, get_date_range
@@ -549,6 +552,7 @@ def main():
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
         _log_franchise_optimal_summary(cluster_results, run_output_dir)
+        _save_run_summary(args, cluster_results, run_output_dir)
         _save_global_test_timeline_outputs(
             cluster_results,
             run_output_dir,
@@ -605,6 +609,134 @@ def _log_franchise_optimal_summary(all_cluster_results, run_output_dir: Path):
         )
 
     logger.info(f"Detailed config CSV: {run_output_dir / 'franchise_optimal_config.csv'}")
+
+
+def _to_json_safe(obj):
+    """Recursively convert numpy/pandas types to JSON-serializable Python types."""
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_json_safe(v) for v in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    if hasattr(obj, "isoformat"):  # datetime.date / datetime.datetime
+        return obj.isoformat()
+    return obj
+
+
+def _save_run_summary(args, all_cluster_results, run_output_dir: Path):
+    """Build and persist a comprehensive JSON run summary for sharing and post-analysis."""
+    if not all_cluster_results:
+        return
+
+    # --- Simulation config snapshot ---
+    sim_config = {
+        "n_simulations": N_SIMULATIONS,
+        "n_optimization_calls": N_OPTIMIZATION_CALLS,
+        "random_seed": RANDOM_SEED,
+        "train_test_split": TRAIN_TEST_SPLIT,
+        "max_ept_increase_min": MAX_EPT_INCREASE,
+        "model_type": MODEL_SETTINGS,
+        "thresholds": THRESHOLDS,
+        "objective_weights": OBJECTIVE_WEIGHTS,
+        "optimizer_penalties": OPTIMIZER_PENALTIES,
+        "bayesian_settings": BAYESIAN_SETTINGS,
+    }
+
+    # --- Per-cluster results ---
+    clusters_summary = []
+    for res in all_cluster_results:
+        cluster_name = res.get("cluster", "unknown")
+        best_config = res.get("best_config", {})
+        baseline = res.get("baseline_metrics", {})
+        evaluation = res.get("evaluation", {})
+        optimizer = res.get("optimizer")
+        awt_pred = res.get("awt_predictor")
+        ept_pred = res.get("ept_predictor")
+        df_cluster = res.get("df_cluster")
+
+        # Data summary
+        data_summary = {}
+        if df_cluster is not None:
+            data_summary["n_rows"] = int(len(df_cluster))
+            data_summary["n_partners"] = int(df_cluster["partner_id"].nunique()) if "partner_id" in df_cluster.columns else None
+            if "momento_exacto" in df_cluster.columns:
+                data_summary["date_min"] = str(df_cluster["momento_exacto"].min())
+                data_summary["date_max"] = str(df_cluster["momento_exacto"].max())
+
+        # Model quality
+        model_quality = {}
+        if awt_pred is not None and hasattr(awt_pred, "metrics"):
+            model_quality["awt_predictor"] = {
+                "metrics": _to_json_safe(awt_pred.metrics),
+                "split_metadata": _to_json_safe(getattr(awt_pred, "split_metadata", {})),
+                "features": getattr(awt_pred, "feature_names", None),
+            }
+        if ept_pred is not None and hasattr(ept_pred, "metrics"):
+            model_quality["ept_predictor"] = {
+                "metrics": _to_json_safe(ept_pred.metrics),
+                "split_metadata": _to_json_safe(getattr(ept_pred, "split_metadata", {})),
+                "features": getattr(ept_pred, "feature_names", None),
+            }
+
+        # Top-3 strategies from this cluster's optimizer
+        strategies = {}
+        if optimizer is not None and hasattr(optimizer, "get_top_3_strategies"):
+            try:
+                strategies = _to_json_safe(optimizer.get_top_3_strategies())
+            except Exception:
+                pass
+
+        # Franchise evaluation aggregate (exclude large partner_results list here)
+        eval_aggregate = {k: v for k, v in evaluation.items() if k != "partner_results"}
+        partner_impact = evaluation.get("partner_results", [])
+
+        clusters_summary.append({
+            "cluster": cluster_name,
+            "data_summary": data_summary,
+            "baseline_metrics": _to_json_safe(baseline),
+            "model_quality": model_quality,
+            "best_config": _to_json_safe(best_config),
+            "strategies": strategies,
+            "franchise_evaluation": _to_json_safe(eval_aggregate),
+            "partner_impact": _to_json_safe(partner_impact),
+        })
+
+    # --- Assemble full summary ---
+    summary = {
+        "run_metadata": {
+            "timestamp": datetime.now().isoformat(),
+            "franchise": args.franchise,
+            "grade": args.grade,
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+            "days_of_week_input": args.days_of_week,
+            "days_of_week_bq": args.target_days_of_week,
+            "country_id": args.country_id,
+            "entity_id": args.entity_id,
+            "optimization_scope": args.optimization_scope,
+            "data_source": args.data_source,
+        },
+        "simulation_config": _to_json_safe(sim_config),
+        "clusters": clusters_summary,
+    }
+
+    summary_json = json.dumps(summary, indent=2, ensure_ascii=False)
+
+    for dest in [run_output_dir, OUTPUT_DIR]:
+        path = dest / "run_summary.json"
+        path.write_text(summary_json, encoding="utf-8")
+        logger.info(f"Run summary saved: {path}")
+
+    latest_path = OUTPUT_DIR / "latest_run_summary.json"
+    latest_path.write_text(summary_json, encoding="utf-8")
+    logger.info(f"Latest run summary pointer updated: {latest_path}")
 
 
 def _save_global_test_timeline_outputs(
