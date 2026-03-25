@@ -42,7 +42,7 @@ time_grid AS (
     CAST(start_date AS TIMESTAMP),
     TIMESTAMP(DATETIME(end_date, '23:59:59')),
     INTERVAL 1 MINUTE)) AS ts
-  WHERE EXTRACT(DAYOFWEEK FROM ts) IN (1, 6, 7)
+  WHERE EXTRACT(DAYOFWEEK FROM ts) IN (1, 2, 3, 4, 5, 6, 7)
 ),
 
 hdm_data AS (
