@@ -2,18 +2,20 @@
 
 ## 0) Comandos de Traspaso (JupyterHub)
 
-Ejecutar estos comandos al inicio para garantizar que todo funcione en la version correcta:
+Ejecutar este bloque al inicio para garantizar que todo funcione en la version correcta:
 
 ```bash
+pip install scikit-optimize==0.10.2
 cd /home/jovyan/projects/HDM-Optimization
-git pull --ff-only origin main
 source ./setup.sh
+git restore outputs/franchise_impact_by_partner.csv outputs/franchise_optimal_config.csv outputs/optimization_history.csv
+git pull origin main
 ```
 
-Comando principal para correr la simulacion y generar los graficos que interesan:
+Comando principal de corrida/test para generar recomendacion + graficos:
 
 ```bash
-bash ./run.sh KFC AAA 2026-02-16 2026-03-01 "all"
+bash ./run.sh NIU AA 2026-02-03 2026-03-23 "1,2,3,4,5,6,7"
 ```
 
 Verificacion rapida de artefactos clave:
@@ -21,6 +23,28 @@ Verificacion rapida de artefactos clave:
 ```bash
 ls outputs/global_test_timeline_*.png
 ls outputs/latest_run_summary.json
+```
+
+Visualizacion en Notebook (copiar en una celda):
+
+```python
+from pathlib import Path
+from IPython.display import Image, display
+
+outputs = Path("/home/jovyan/projects/HDM-Optimization/outputs")
+latest_ptr = outputs / "latest_run_path.txt"
+base = Path(latest_ptr.read_text().strip()) if latest_ptr.exists() else outputs
+
+pngs = sorted(base.glob("global_test_timeline_*.png"))
+
+print("Base usada:", base)
+if not pngs:
+  print("No se encontraron PNG de timeline.")
+else:
+  for p in pngs:
+    day = p.stem.replace("global_test_timeline_", "").capitalize()
+    print(f"\n=== {day} ===")
+    display(Image(filename=str(p), width=1400))
 ```
 
 Notas:

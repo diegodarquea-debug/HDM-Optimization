@@ -2,33 +2,54 @@
 
 ## Traspaso Rapido (Primeros comandos en JupyterHub)
 
-1. Sincronizar y preparar entorno:
+Este es el flujo operativo real usado en JupyterHub para dejar todo listo.
+
+1. Preparar entorno y sincronizar repo:
 
 ```bash
+pip install scikit-optimize==0.10.2
 cd /home/jovyan/projects/HDM-Optimization
-git pull --ff-only origin main
 source ./setup.sh
+git restore outputs/franchise_impact_by_partner.csv outputs/franchise_optimal_config.csv outputs/optimization_history.csv
+git pull origin main
 ```
 
-2. Ejecutar simulacion que genera recomendacion + graficos + resumen completo:
+2. Ejecutar test/corrida principal:
 
 ```bash
-bash ./run.sh KFC AAA 2026-02-16 2026-03-01 "all"
+bash ./run.sh NIU AA 2026-02-03 2026-03-23 "1,2,3,4,5,6,7"
 ```
 
-3. Verificar graficos generados:
+3. Verificar graficos y resumen generados:
 
 ```bash
 ls outputs/global_test_timeline_*.png
-```
-
-4. Verificar resumen integral de la corrida:
-
-```bash
 ls outputs/latest_run_summary.json
 ```
 
-El comando de `run.sh` genera automaticamente los graficos de timeline por dia y el archivo `run_summary.json` para compartir resultados.
+4. Ver graficos dentro de un Notebook (copiar en una celda):
+
+```python
+from pathlib import Path
+from IPython.display import Image, display
+
+outputs = Path("/home/jovyan/projects/HDM-Optimization/outputs")
+latest_ptr = outputs / "latest_run_path.txt"
+base = Path(latest_ptr.read_text().strip()) if latest_ptr.exists() else outputs
+
+pngs = sorted(base.glob("global_test_timeline_*.png"))
+
+print("Base usada:", base)
+if not pngs:
+    print("No se encontraron PNG de timeline.")
+else:
+    for p in pngs:
+        day = p.stem.replace("global_test_timeline_", "").capitalize()
+        print(f"\n=== {day} ===")
+        display(Image(filename=str(p), width=1400))
+```
+
+El comando de `run.sh` genera automaticamente los PNG de timeline por dia y el archivo `run_summary.json` para compartir resultados.
 
 Pipeline de optimizacion de HDM para franquicias, con foco en equilibrio entre:
 
@@ -48,13 +69,7 @@ Esta version incluye:
 - Generacion de timeline global por dia (Lunes a Domingo)
 - Nuevo artefacto integral `run_summary.json` con todo lo usado en la simulacion
 
-## Quick Start (JupyterHub)
-
-```bash
-cd /home/jovyan/projects/HDM-Optimization
-git pull --ff-only origin main
-source ./setup.sh
-```
+## Ejemplos de Ejecucion
 
 Ejecucion base:
 
