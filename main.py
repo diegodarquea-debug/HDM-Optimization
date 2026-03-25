@@ -612,7 +612,7 @@ def _save_global_test_timeline_outputs(
     run_output_dir: Path,
     target_days_of_week: List[int] | None = None,
 ):
-    """Generate test-only minute-level real vs recommended timeline artifacts for global strategy."""
+    """Generate test-only hourly day-profile real vs recommended artifacts for global strategy."""
     global_result = next((res for res in all_cluster_results if res.get("cluster") == CLUSTER_GLOBAL_NAME), None)
     if not global_result:
         msg = f"Skipping timeline artifacts: global cluster '{CLUSTER_GLOBAL_NAME}' not found in results {[r.get('cluster') for r in all_cluster_results]}."
