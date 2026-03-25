@@ -46,6 +46,45 @@ CLUSTER_GLOBAL_NAME = PIPELINE_DEFAULTS["global_cluster_name"]
 CLUSTER_HIGH_VOLUME_NAME = PIPELINE_DEFAULTS["high_volume_cluster_name"]
 CLUSTER_LOW_VOLUME_NAME = PIPELINE_DEFAULTS["low_volume_cluster_name"]
 
+_DEFAULT_TARGET_DAYS_OF_WEEK = [1, 2, 3, 4, 5, 6, 7]  # BigQuery: 1=Sun ... 7=Sat
+_DAY_TOKEN_TO_BQ_DOW = {
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "sun": 1,
+    "sunday": 1,
+    "dom": 1,
+    "domingo": 1,
+    "mon": 2,
+    "monday": 2,
+    "lun": 2,
+    "lunes": 2,
+    "tue": 3,
+    "tuesday": 3,
+    "mar": 3,
+    "martes": 3,
+    "wed": 4,
+    "wednesday": 4,
+    "mie": 4,
+    "miercoles": 4,
+    "thu": 5,
+    "thursday": 5,
+    "jue": 5,
+    "jueves": 5,
+    "fri": 6,
+    "friday": 6,
+    "vie": 6,
+    "viernes": 6,
+    "sat": 7,
+    "saturday": 7,
+    "sab": 7,
+    "sabado": 7,
+}
+
 
 def _get_versioned_output_dir(output_base_dir: Path = OUTPUT_DIR) -> Path:
     """
@@ -76,6 +115,43 @@ def _prompt_if_missing(current_value: Any, prompt_text: str, default: Any = None
     return default
 
 
+def _parse_days_of_week(raw_value: str | None) -> List[int]:
+    """
+    Parse user-provided days-of-week to BigQuery EXTRACT(DAYOFWEEK) values.
+
+    Accepted formats (comma-separated):
+    - all
+    - numbers 1-7 (BigQuery: 1=Sun ... 7=Sat)
+    - english short/full names (mon,monday,...)
+    - spanish short/full names (lun,lunes,...)
+    """
+    if raw_value is None:
+        return _DEFAULT_TARGET_DAYS_OF_WEEK.copy()
+
+    normalized = str(raw_value).strip().lower()
+    if normalized in {"", "all", "todos"}:
+        return _DEFAULT_TARGET_DAYS_OF_WEEK.copy()
+
+    resolved: List[int] = []
+    for token in normalized.split(","):
+        key = token.strip().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u")
+        if not key:
+            continue
+        dow = _DAY_TOKEN_TO_BQ_DOW.get(key)
+        if dow is None:
+            raise ValueError(
+                "Invalid days-of-week token: "
+                f"'{token.strip()}'. Use 'all' or comma-separated values like '1,6,7' or 'lun,mar,mie'."
+            )
+        if dow not in resolved:
+            resolved.append(dow)
+
+    if not resolved:
+        return _DEFAULT_TARGET_DAYS_OF_WEEK.copy()
+
+    return sorted(resolved)
+
+
 def _collect_bigquery_query_inputs(args, bq_query: str):
     """
     Collect BigQuery query parameters from args or prompts.
@@ -89,6 +165,7 @@ def _collect_bigquery_query_inputs(args, bq_query: str):
             "@target_grade",
             "@start_date",
             "@end_date",
+            "@target_days_of_week",
         ]
     )
 
@@ -108,6 +185,7 @@ def _collect_bigquery_query_inputs(args, bq_query: str):
         "target_grade": str(args.grade),
         "target_country_id": int(args.country_id),
         "target_entity_id": str(args.entity_id),
+        "target_days_of_week": list(args.target_days_of_week),
     }
     return args, query_parameters
 
@@ -353,6 +431,8 @@ def main():
                         help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=str, required=True,
                         help="End date (YYYY-MM-DD)")
+    parser.add_argument("--days-of-week", type=str, default="all",
+                        help="Days to include in BigQuery query: all | 1-7 | mon,tue,... | lun,mar,...")
     
     # FIXED PARAMETERS (for Chile/KFC backtesting - change only if needed)
     parser.add_argument("--mode", choices=list(PIPELINE_CHOICES["mode"]), default=PIPELINE_DEFAULTS["mode"], 
@@ -377,11 +457,14 @@ def main():
                         help="CSV input path (used if data-source=csv)")
     args = parser.parse_args()
 
+    args.target_days_of_week = _parse_days_of_week(args.days_of_week)
+
     progress_bar = None
     if args.mode == MODE_FRANCHISE:
         progress_bar = tqdm(total=5, desc="Loading inputs", dynamic_ncols=True)
 
     logger.info(f"HDM OPTIMIZATION PIPELINE - {args.mode.upper()} MODE")
+    logger.info(f"BigQuery target days-of-week (1=Sun ... 7=Sat): {args.target_days_of_week}")
     logger.info(
         f"Execution settings: N_SIMULATIONS={N_SIMULATIONS}, "
         f"N_OPTIMIZATION_CALLS={N_OPTIMIZATION_CALLS}, "
@@ -431,6 +514,7 @@ def main():
             f"end_date={args.end_date}",
             f"franchise={args.franchise}",
             f"grade={args.grade}",
+            f"days_of_week={args.target_days_of_week}",
             f"country_id={args.country_id}",
             f"entity_id={args.entity_id}",
         ]

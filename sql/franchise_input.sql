@@ -6,6 +6,7 @@
 --   @target_grade (STRING, required)
 --   @target_country_id (INT64, optional, default suggested: 2 for Chile)
 --   @target_entity_id (STRING, optional, default: PY_CL)
+--   @target_days_of_week (ARRAY<INT64>, optional, BigQuery: 1=Sun ... 7=Sat)
 --   @partner_ids (ARRAY<INT64>, optional)
 
 WITH params AS (
@@ -15,7 +16,8 @@ WITH params AS (
     REGEXP_REPLACE(UPPER(@target_franchise), r'[^A-Z0-9]', '') AS target_franchise,
     @target_grade AS target_grade,
     COALESCE(@target_country_id, 2) AS target_country_id,
-    COALESCE(@target_entity_id, 'PY_CL') AS target_entity_id
+    COALESCE(@target_entity_id, 'PY_CL') AS target_entity_id,
+    COALESCE(@target_days_of_week, [1, 2, 3, 4, 5, 6, 7]) AS target_days_of_week
 ),
 
 vendor_scope AS (
@@ -36,13 +38,13 @@ vendor_scope AS (
 ),
 
 time_grid AS (
-  -- Keep all days of week for full-week threshold calibration.
+  -- Filter days dynamically from @target_days_of_week (default: all days).
   SELECT CAST(ts AS DATETIME) AS dt_snapshot
   FROM params, UNNEST(GENERATE_TIMESTAMP_ARRAY(
     CAST(start_date AS TIMESTAMP),
     TIMESTAMP(DATETIME(end_date, '23:59:59')),
     INTERVAL 1 MINUTE)) AS ts
-  WHERE EXTRACT(DAYOFWEEK FROM ts) IN (1, 2, 3, 4, 5, 6, 7)
+  WHERE EXTRACT(DAYOFWEEK FROM ts) IN UNNEST((SELECT target_days_of_week FROM params))
 ),
 
 hdm_data AS (
