@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -34,12 +34,44 @@ _METRIC_SPECS = [
     ("riders",  "riders_real",  "riders_sim",  "Riders esperando (prom.)"),
 ]
 
+_BQ_TO_PANDAS_DAYOFWEEK = {
+    1: 6,  # Sunday
+    2: 0,  # Monday
+    3: 1,  # Tuesday
+    4: 2,  # Wednesday
+    5: 3,  # Thursday
+    6: 4,  # Friday
+    7: 5,  # Saturday
+}
 
-def _aggregate_hourly_by_dayofweek(df_sim: pd.DataFrame) -> Dict[int, pd.DataFrame]:
+
+def _resolve_target_pandas_days(target_days_of_week: List[int] | None) -> List[int]:
+    """Resolve target days from BigQuery DAYOFWEEK values (1..7) to pandas values (0..6)."""
+    if target_days_of_week is None:
+        return list(_DAY_OF_WEEK_MAP.keys())
+
+    mapped = []
+    for day in target_days_of_week:
+        if day not in _BQ_TO_PANDAS_DAYOFWEEK:
+            raise ValueError(
+                f"Invalid BigQuery day-of-week value: {day}. Expected integers in [1..7]."
+            )
+        pandas_day = _BQ_TO_PANDAS_DAYOFWEEK[day]
+        if pandas_day not in mapped:
+            mapped.append(pandas_day)
+
+    # Keep display/CSV order deterministic: Monday ... Sunday.
+    return sorted(mapped)
+
+
+def _aggregate_hourly_by_dayofweek(
+    df_sim: pd.DataFrame,
+    target_pandas_days: List[int],
+) -> Dict[int, pd.DataFrame]:
     """
     Aggregate simulation output to average hourly profile per day-of-week.
 
-    For each day in _DAY_OF_WEEK_MAP (Mon=0 ... Sun=6) returns a DataFrame
+    For each selected day in target_pandas_days returns a DataFrame
     with one row per hour (0-23) containing the mean of each metric across all
     historical occurrences of that day in the dataset.
 
@@ -71,7 +103,7 @@ def _aggregate_hourly_by_dayofweek(df_sim: pd.DataFrame) -> Dict[int, pd.DataFra
     )
 
     result: Dict[int, pd.DataFrame] = {}
-    for dow in _DAY_OF_WEEK_MAP:
+    for dow in target_pandas_days:
         df_day = per_slot[per_slot["_dow"] == dow]
         if df_day.empty:
             logger.warning("No test data found for day-of-week=%d (%s).", dow, _DAY_OF_WEEK_MAP[dow]["label"])
@@ -148,10 +180,14 @@ def generate_global_test_timeline_artifacts(
     baseline_metrics: Dict[str, Any],
     best_config: Dict[str, Any],
     output_dirs: Iterable[Path],
+    target_days_of_week: List[int] | None = None,
     rolling_window_minutes: int | None = None,  # kept for API compatibility, not used
 ) -> Dict[str, Any]:
     """
-    Build and persist average hourly profile artifacts per day-of-week (Mon-Sun).
+    Build and persist average hourly profile artifacts for selected days.
+
+    target_days_of_week expects BigQuery DAYOFWEEK values (1=Sun ... 7=Sat).
+    When omitted, it defaults to all days.
 
     Outputs per output_dir:
     - test_timeline_global_equilibrada.csv  (all days, columns: day_label, hora, metrics)
@@ -175,12 +211,16 @@ def generate_global_test_timeline_artifacts(
         cfg["duracion_hdm"],
     )
 
-    hourly_by_dow = _aggregate_hourly_by_dayofweek(df_sim_test)
+    target_pandas_days = _resolve_target_pandas_days(target_days_of_week)
+    hourly_by_dow = _aggregate_hourly_by_dayofweek(df_sim_test, target_pandas_days)
     if not hourly_by_dow:
-        msg = "Skipping timeline artifacts: no day-of-week data found in test slice."
+        msg = (
+            "Skipping timeline artifacts: no data found in test slice for selected days "
+            f"(BigQuery={target_days_of_week or [1, 2, 3, 4, 5, 6, 7]})."
+        )
         logger.warning(msg)
         print(f"\n[TIMELINE] {msg}\n", flush=True)
-        return {"saved": False, "reason": "no_day_data", "split": split_metadata}
+        return {"saved": False, "reason": "no_selected_day_data", "split": split_metadata}
 
     # Build combined CSV (all days stacked)
     csv_frames = []
@@ -224,6 +264,7 @@ def generate_global_test_timeline_artifacts(
     return {
         "saved": True,
         "split": split_metadata,
+        "target_days_of_week": target_days_of_week or [1, 2, 3, 4, 5, 6, 7],
         "days": days_generated,
         "paths": saved_paths,
     }

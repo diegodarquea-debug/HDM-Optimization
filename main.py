@@ -549,7 +549,11 @@ def main():
         _save_clustered_outputs(cluster_results, OUTPUT_DIR)
         _write_latest_run_pointer(run_output_dir)
         _log_franchise_optimal_summary(cluster_results, run_output_dir)
-        _save_global_test_timeline_outputs(cluster_results, run_output_dir)
+        _save_global_test_timeline_outputs(
+            cluster_results,
+            run_output_dir,
+            target_days_of_week=args.target_days_of_week,
+        )
         if progress_bar is not None:
             progress_bar.update(1)
             progress_bar.set_description("Completed")
@@ -603,7 +607,11 @@ def _log_franchise_optimal_summary(all_cluster_results, run_output_dir: Path):
     logger.info(f"Detailed config CSV: {run_output_dir / 'franchise_optimal_config.csv'}")
 
 
-def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path):
+def _save_global_test_timeline_outputs(
+    all_cluster_results,
+    run_output_dir: Path,
+    target_days_of_week: List[int] | None = None,
+):
     """Generate test-only minute-level real vs recommended timeline artifacts for global strategy."""
     global_result = next((res for res in all_cluster_results if res.get("cluster") == CLUSTER_GLOBAL_NAME), None)
     if not global_result:
@@ -632,6 +640,7 @@ def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path
             baseline_metrics=baseline_metrics,
             best_config=best_config,
             output_dirs=[run_output_dir, OUTPUT_DIR],
+            target_days_of_week=target_days_of_week,
         )
     except Exception as exc:
         logger.exception("Could not generate global test timeline artifacts: %s", exc)
@@ -642,8 +651,9 @@ def _save_global_test_timeline_outputs(all_cluster_results, run_output_dir: Path
         split = artifacts.get("split", {})
         days = ", ".join(artifacts.get("days", []))
         logger.info(
-            "Global hourly profile artifacts generated (days: %s | test rows: %s, test ratio: %.2f).",
+            "Global hourly profile artifacts generated (days: %s | bq_days=%s | test rows: %s, test ratio: %.2f).",
             days,
+            artifacts.get("target_days_of_week"),
             split.get("n_test"),
             split.get("test_ratio", 0.0),
         )
