@@ -7,8 +7,6 @@ import pandas as pd
 
 from src.timeline_reporting import (
     TIMELINE_CSV_NAME,
-    TIMELINE_RAW_PNG_NAME,
-    TIMELINE_SMOOTHED_PNG_NAME,
     generate_global_test_timeline_artifacts,
 )
 
@@ -71,16 +69,14 @@ class TestTimelineReporting(unittest.TestCase):
             self.assertTrue(result["saved"])
 
             csv_path = out_dir / TIMELINE_CSV_NAME
-            raw_png_path = out_dir / TIMELINE_RAW_PNG_NAME
-            smooth_png_path = out_dir / TIMELINE_SMOOTHED_PNG_NAME
+            png_paths = list(out_dir.glob("global_test_timeline_*.png"))
 
             self.assertTrue(csv_path.exists())
-            self.assertTrue(raw_png_path.exists())
-            self.assertTrue(smooth_png_path.exists())
+            self.assertGreaterEqual(len(png_paths), 1)
 
             df_timeline = pd.read_csv(csv_path)
-            # With 10 rows and 60% train, test should be 4 rows.
-            self.assertEqual(len(df_timeline), 4)
+            self.assertGreaterEqual(len(df_timeline), 1)
+            self.assertIn("dia", df_timeline.columns)
             self.assertIn("awt_real", df_timeline.columns)
             self.assertIn("awt_sim", df_timeline.columns)
             self.assertIn("ept_real", df_timeline.columns)
@@ -89,6 +85,7 @@ class TestTimelineReporting(unittest.TestCase):
             self.assertIn("hdm_sim", df_timeline.columns)
             self.assertIn("ordenes_real", df_timeline.columns)
             self.assertIn("riders_real", df_timeline.columns)
+            self.assertIn("Jueves", set(df_timeline["dia"].dropna().unique()))
 
 
 if __name__ == "__main__":

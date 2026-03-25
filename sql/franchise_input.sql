@@ -36,7 +36,7 @@ vendor_scope AS (
 ),
 
 time_grid AS (
-  -- Only keep Friday (6), Saturday (7), Sunday (1) for weekend-only threshold calibration.
+  -- Keep all days of week for full-week threshold calibration.
   SELECT CAST(ts AS DATETIME) AS dt_snapshot
   FROM params, UNNEST(GENERATE_TIMESTAMP_ARRAY(
     CAST(start_date AS TIMESTAMP),

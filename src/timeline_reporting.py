@@ -1,4 +1,4 @@
-"""Hourly average profile artifacts by day-of-week (Fri/Sat/Sun) for global franchise recommendations."""
+"""Hourly average profile artifacts by day-of-week (Mon-Sun) for global franchise recommendations."""
 
 import logging
 from pathlib import Path
@@ -15,10 +15,14 @@ logger = logging.getLogger(__name__)
 
 TIMELINE_CSV_NAME = "test_timeline_global_equilibrada.csv"
 
-# pandas dt.dayofweek: Mon=0 ... Fri=4, Sat=5, Sun=6
+# pandas dt.dayofweek: Mon=0 ... Sun=6
 _DAY_OF_WEEK_MAP = {
+    0: {"label": "Lunes", "slug": "lunes"},
+    1: {"label": "Martes", "slug": "martes"},
+    2: {"label": "Miercoles", "slug": "miercoles"},
+    3: {"label": "Jueves", "slug": "jueves"},
     4: {"label": "Viernes", "slug": "viernes"},
-    5: {"label": "Sábado",  "slug": "sabado"},
+    5: {"label": "Sabado",  "slug": "sabado"},
     6: {"label": "Domingo", "slug": "domingo"},
 }
 
@@ -35,7 +39,7 @@ def _aggregate_hourly_by_dayofweek(df_sim: pd.DataFrame) -> Dict[int, pd.DataFra
     """
     Aggregate simulation output to average hourly profile per day-of-week.
 
-    For each day in _DAY_OF_WEEK_MAP (Fri=4, Sat=5, Sun=6) returns a DataFrame
+    For each day in _DAY_OF_WEEK_MAP (Mon=0 ... Sun=6) returns a DataFrame
     with one row per hour (0-23) containing the mean of each metric across all
     historical occurrences of that day in the dataset.
 
@@ -147,13 +151,11 @@ def generate_global_test_timeline_artifacts(
     rolling_window_minutes: int | None = None,  # kept for API compatibility, not used
 ) -> Dict[str, Any]:
     """
-    Build and persist average hourly profile artifacts per day-of-week (Fri/Sat/Sun).
+    Build and persist average hourly profile artifacts per day-of-week (Mon-Sun).
 
     Outputs per output_dir:
     - test_timeline_global_equilibrada.csv  (all days, columns: day_label, hora, metrics)
-    - global_test_timeline_viernes.png
-    - global_test_timeline_sabado.png
-    - global_test_timeline_domingo.png
+    - global_test_timeline_<day_slug>.png (one PNG per available day in test slice)
     """
     _, df_test, split_metadata = temporal_train_test_split_df(df_global, TRAIN_TEST_SPLIT)
     if df_test.empty:
@@ -175,10 +177,10 @@ def generate_global_test_timeline_artifacts(
 
     hourly_by_dow = _aggregate_hourly_by_dayofweek(df_sim_test)
     if not hourly_by_dow:
-        msg = "Skipping timeline artifacts: no weekend data found in test slice."
+        msg = "Skipping timeline artifacts: no day-of-week data found in test slice."
         logger.warning(msg)
         print(f"\n[TIMELINE] {msg}\n", flush=True)
-        return {"saved": False, "reason": "no_weekend_data", "split": split_metadata}
+        return {"saved": False, "reason": "no_day_data", "split": split_metadata}
 
     # Build combined CSV (all days stacked)
     csv_frames = []
